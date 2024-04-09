@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>WirelessKitAddon</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);OTD06</DefineConstants>
+  </PropertyGroup>
+
+  <!-- We just re-use the source code of the 0.5.x version of the addon minus some files -->
+  <ItemGroup>
+    <Compile Include="../WirelessKitAddon-0.5.x/**/*.cs" CopyToOutputDirectory="Never" />
+    <Compile Remove="../WirelessKitAddon-0.5.x/Reports/DeviceReport.cs" />
+
+    <Compile Remove="../WirelessKitAddon-0.5.x/obj/**/*.cs" />
+    <Compile Remove="../WirelessKitAddon-0.5.x/bin/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../WirelessKitAddon.Lib/WirelessKitAddon.Lib.csproj" />
+    <ProjectReference Include="../.modules/OpenTabletDriver-0.6.x/OpenTabletDriver/OpenTabletDriver.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

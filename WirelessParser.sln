@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon-0.5.x", "WirelessKitAddon-0.5.x\WirelessKitAddon.csproj", "{532603A8-1636-4A75-A848-F3CD71199A49}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon-0.6.x", "WirelessKitAddon-0.6.x\WirelessKitAddon.csproj", "{49E73108-BD39-4253-96FD-8C7390605A7F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon.Lib", "WirelessKitAddon.Lib\WirelessKitAddon.Lib.csproj", "{C8F55956-1EDE-43F2-A73E-86D2A1414538}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{532603A8-1636-4A75-A848-F3CD71199A49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{532603A8-1636-4A75-A848-F3CD71199A49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{532603A8-1636-4A75-A848-F3CD71199A49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{532603A8-1636-4A75-A848-F3CD71199A49}.Release|Any CPU.Build.0 = Release|Any CPU
+		{49E73108-BD39-4253-96FD-8C7390605A7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{49E73108-BD39-4253-96FD-8C7390605A7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{49E73108-BD39-4253-96FD-8C7390605A7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{49E73108-BD39-4253-96FD-8C7390605A7F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

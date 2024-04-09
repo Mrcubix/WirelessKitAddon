@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+    <NoWarn>$(NoWarn); NETSDK1138; VSTHRD200; NU1902; NU1903</NoWarn>
+    <RootNamespace>WirelessKitAddon</RootNamespace>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);OTD05</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../WirelessKitAddon.Lib/WirelessKitAddon.Lib.csproj" />
+    <ProjectReference Include="../.modules/OpenTabletDriver-0.5.x/OpenTabletDriver/OpenTabletDriver.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
