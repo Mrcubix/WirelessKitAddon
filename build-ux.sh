@@ -15,7 +15,8 @@ zip_dir_contents () {
     echo "Zipping $f"
     (
         cd $1
-        zip -r $2 ./*
+        #zip -r $2 ./*
+        jar -cMf $2 ./*
     )
 }
 
@@ -36,9 +37,9 @@ for platform in "${platforms[@]}"
 do
     # Windows needs its own project because of a bad dependency
     if [[ $platform == *"win"* ]]; then
-        dotnet publish WirelessKitAddon.UX.Windows -c Release -r $platform -o build/ux/$platform
+        dotnet publish WirelessKitAddon.UX.Windows -c Release -r $platform -o build/ux/$platform -p:EnableWindowsTargeting=true || exit 1
     else
-        dotnet publish WirelessKitAddon.UX.Desktop -c Release -r $platform -o build/ux/$platform
+        dotnet publish WirelessKitAddon.UX.Desktop -c Release -r $platform -o build/ux/$platform || exit 1
     fi
 done
 

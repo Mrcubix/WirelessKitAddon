@@ -144,7 +144,7 @@ namespace WirelessKitAddon.Lib
             archive.ExtractToDirectory(_directory.FullName, true);
 
             File.WriteAllText(_versionFilePath, version);
-            File.WriteAllText(DateTime.Now.ToString(CultureInfo.InvariantCulture), _dateFilePath);
+            File.WriteAllText(_dateFilePath, DateTime.Now.ToString(CultureInfo.InvariantCulture));
 
             return true;
         }

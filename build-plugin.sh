@@ -76,7 +76,8 @@ do
 
     (
         cd ./build/plugin/$version
-        zip -r WirelessKitAddon-$version.zip WirelessKitAddon.dll
+        #zip -r WirelessKitAddon-$version.zip ./*
+        jar -cfM WirelessKitAddon-$version.zip ./*
     )
 
 done

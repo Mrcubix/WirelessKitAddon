@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: write
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     name: Generate Release
     env:
       TAG: ${{ github.event.inputs.tag }}
@@ -31,27 +31,23 @@ jobs:
           8.0.x
 
     - name: Build
+      shell: bash
       run: bash ./build.sh
 
     - name: Create version file
-      run: echo "$TAG" > build/version.txt
+      env:
+        TAG: ${{ github.event.inputs.tag }}
+      run: $env:TAG | Out-File -FilePath build/version.txt -NoNewline
 
     - name: Create Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ github.event.inputs.tag }}
       run: |
-        declare -a files
-        
-        # Add version file
-        files+=("build/version.txt")
+        # Aggregate zipped files into an array in powershell & version.txt, only keep the relative path
+        $files = Get-ChildItem -Path build -Recurse -Include *.zip,version.txt | ForEach-Object { $_.FullName -replace [regex]::Escape((Get-Location).Path + '\'), '' }
 
-        # Add the plugin zip files
-        files+=("build/plugin/0.5.x/WirelessKitAddon-0.5.x.zip")
-        files+=("build/plugin/0.6.x/WirelessKitAddon-0.6.x.zip")
+        Write-Host "Found $($files.Count) files to upload"
+        Write-Host "Creating draft release for $env:TAG"
 
-        # Add all ux zip files
-        for file in build/ux/*.zip; do
-          files+=("$file")
-        done
-
-        gh release create -d -t "Wireless Kit Addon $TAG" "$TAG" "${files[@]}" -F build/hashes.txt
+        gh release create -d -t "Wireless Kit Addon $env:TAG" "$env:TAG" $files -F ./build/hashes.txt

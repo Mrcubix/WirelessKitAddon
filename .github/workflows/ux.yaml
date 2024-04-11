@@ -24,7 +24,7 @@ jobs:
       matrix:
         runtime: [win-x64, win-x86, win-arm64, linux-x64, linux-arm64, linux-arm, osx-x64, osx-arm64]
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -38,18 +38,16 @@ jobs:
           8.0.x
 
     - name: Build
-      env:
-        platform: ${{ matrix.runtime }}
-      run: bash ./build-single-ux.sh $platform
+      run: bash ./build-single-ux.sh ${{ matrix.runtime }}
 
     - name: Remove PDB files
       run: |
-        find ./build/ux -name "*.pdb" -type f -delete
+        Get-ChildItem ./build/ux/${{ matrix.runtime }}/*.pdb -Recurse | ForEach-Object { Remove-Item $_.FullName }
 
     - name: Generate artifact name
       env:
         platform: ${{ matrix.runtime }}
-      run: echo "artifact_name=WirelessKitAddon.UX-${{ matrix.runtime }}" >> $GITHUB_ENV
+      run: echo "artifact_name=WirelessKitAddon.UX-${{ matrix.runtime }}" >> $env:GITHUB_ENV
 
     - uses: actions/upload-artifact@main
       name: Upload artifact

@@ -2,6 +2,8 @@
 
 platform=$1
 
+echo "Parameters:" $@
+
 if [ -z "$platform" ]; then
     echo "Please provide a platform"
     exit 1
