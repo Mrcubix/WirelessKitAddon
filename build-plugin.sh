@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 
+# ------------------------- Variables ------------------------- #
+
 versions=("0.5.x" "0.6.x")
+
+# ------------------------- Arguments ------------------------- #
+
+donotzip=false
+
+if [ $# -eq 1 ] && [ "$1" == "--no-zip" ];
+then
+    donotzip=true
+fi
+
+# ------------------------- Functions ------------------------- #
 
 create_build_structure () {
     # Check if build directory exists
@@ -38,6 +51,8 @@ create_plugin_structure () {
     )
 }
 
+# ------------------------- Main ------------------------- #
+
 create_build_structure
 
 for version in "${versions[@]}"
@@ -45,12 +60,19 @@ do
     create_plugin_structure
 
     echo "Building WirelessKitAddon-$version"
-    dotnet publish WirelessKitAddon-$version -c Debug -o ./temp/plugin/$version $@ || exit 1
+    
+    # Exit on failure
+    dotnet publish WirelessKitAddon-$version -c Debug -o ./temp/plugin/$version || exit 1
 
     # Move WirelessKitAddon-$version.dll to ./build/plugin/$version then cd to it and zip it
     mv ./temp/plugin/$version/WirelessKitAddon.dll ./build/plugin/$version
     mv ./temp/plugin/$version/WirelessKitAddon.Lib.dll ./build/plugin/$version
     mv ./temp/plugin/$version/CommunityToolkit.Mvvm.dll ./build/plugin/$version
+
+    if [ "$donotzip" = true ];
+    then
+        continue
+    fi
 
     (
         cd ./build/plugin/$version
