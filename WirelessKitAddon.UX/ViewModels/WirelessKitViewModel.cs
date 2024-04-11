@@ -191,7 +191,6 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         else if (CurrentInstance.BatteryLevel > CurrentInstance.EarlyWarningSetting)
             _pastEarlyWarning = false;
 
-
         if (CurrentInstance.BatteryLevel <= CurrentInstance.LateWarningSetting && !_pastLateWarning)
         {
             SendNotification(CurrentInstance.Name, $"Battery under {CurrentInstance.LateWarningSetting}%");
