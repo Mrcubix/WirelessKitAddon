@@ -8,7 +8,7 @@ if [ -z "$platform" ]; then
 fi
 
 if [[ $platform == *"win"* ]]; then
-    dotnet publish WirelessKitAddon.UX.Windows -c Release -r $platform -o build/ux/$platform
+    dotnet publish WirelessKitAddon.UX.Windows -c Release -r $platform -o build/ux/$platform -p:EnableWindowsTargeting=true
 else
     dotnet publish WirelessKitAddon.UX.Desktop -c Release -r $platform -o build/ux/$platform
 fi
