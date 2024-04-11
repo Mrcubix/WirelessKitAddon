@@ -8,6 +8,10 @@
     <DefineConstants>$(DefineConstants);OTD05</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../WirelessKitAddon.Lib/WirelessKitAddon.Lib.csproj" />
     <ProjectReference Include="../.modules/OpenTabletDriver-0.5.x/OpenTabletDriver/OpenTabletDriver.csproj" PrivateAssets="all" />

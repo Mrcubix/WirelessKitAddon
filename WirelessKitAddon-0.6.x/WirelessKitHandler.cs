@@ -7,13 +7,15 @@ using OpenTabletDriver.Plugin.DependencyInjection;
 using WirelessKitAddon.Parsers;
 using OpenTabletDriver.Plugin.Devices;
 using System.Collections.Immutable;
+using WirelessKitAddon.Lib;
+using WirelessKitAddon.Interfaces;
 
 #if OTD06
 
 namespace WirelessKitAddon
 {
     [PluginName("Wireless Kit Addon")]
-    public class WirelessKitHandler : IPositionedPipelineElement<IDeviceReport>, IDisposable
+    public class WirelessKitHandler : WirelessKitHandlerBase, IPositionedPipelineElement<IDeviceReport>, IDisposable
     {
         #region Constants
 
@@ -44,15 +46,21 @@ namespace WirelessKitAddon
 
         #region Fields
 
-        private IDriver? _driver;
-        private TabletReference? tablet;
+        private TabletReference? _tablet;
 
         #endregion
 
         #region Initialization
 
+        public WirelessKitHandler() : base()
+        {
+            WirelessKitDaemonBase.Ready += OnDaemonReady;
+        }
+
         public void Initialize(IDriver? driver, TabletReference? tablet)
         {
+            WirelessKitDaemonBase.Ready -= OnDaemonReady;
+
             if (driver is Driver _driver && tablet != null)
             {
                 // Need to fetch the tree first to obtain the output mode
@@ -71,21 +79,30 @@ namespace WirelessKitAddon
                                                               SUPPORTED_TABLETS.Contains(identifier.ProductID)))
                     HandleWiredTablet(_driver);
 
-                if (DeviceTree != null)
-                    Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {tablet.Properties.Name}", LogLevel.Info);
-                else
+                if (DeviceTree == null)
                     Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {tablet.Properties.Name}", LogLevel.Warning);
+                else
+                {
+                    BringToDaemon();
+
+                    if (_daemon != null && _instance != null)
+                    {
+                        _ = Task.Run(SetupTrayIcon);
+
+                        Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                    }
+                }    
             }
         }
 
-        private void HandleWirelessKit(Driver driver)
+        protected override void HandleWirelessKit(Driver driver)
         {
             var matches = GetMatchingDevices(driver, Tablet!.Properties, wirelessKitIdentifier);
 
             HandleMatch(driver, matches);
         }
 
-        private void HandleWiredTablet(Driver driver)
+        protected override void HandleWiredTablet(Driver driver)
         {
             // We need to find the inputTree with an identifier of input length 10
             var tree = driver.InputDevices.FirstOrDefault(tree => tree.Properties == Tablet!.Properties);
@@ -97,10 +114,6 @@ namespace WirelessKitAddon
 
             // we need to create a copy of the device and change the parser to our wireless parser
             var matches = GetMatchingDevices(driver, Tablet!.Properties, device.Identifier);
-            driver.CompositeDeviceHub.GetDevices().Select(dev => dev.VendorID == device.Identifier.VendorID &&
-                                                                 dev.ProductID == device.Identifier.ProductID &&
-                                                                 dev.InputReportLength == device.Identifier.InputReportLength &&
-                                                                 dev.OutputReportLength == device.Identifier.OutputReportLength);
 
             HandleMatch(driver, matches);
         }
@@ -150,29 +163,17 @@ namespace WirelessKitAddon
         public IDriver? Driver
         {
             get => _driver;
-            set
-            {
-                _driver = value;
-
-                if (value != null)
-                    Initialize(value, Tablet);
-            }
+            set => _driver = value;
         }
 
         [TabletReference]
         public TabletReference? Tablet
         {
-            get => tablet;
-            set
-            {
-                tablet = value;
-
-                if (Driver != null)
-                    Initialize(Driver, value);
-            }
+            get => _tablet;
+            set => _tablet = value;
         }
 
-        public PipelinePosition Position => PipelinePosition.None;
+        public PipelinePosition Position => PipelinePosition.PreTransform;
 
         /// <summary>
         ///   The device tree that will be used to emit reports.
@@ -188,13 +189,44 @@ namespace WirelessKitAddon
 
         #region Methods
 
-        public void Consume(IDeviceReport value) => Emit?.Invoke(value);
+        public void Consume(IDeviceReport report)
+        {
+            if (_instance != null && report is IBatteryReport batteryReport)
+            {
+                _instance.BatteryLevel = batteryReport.Battery;
+                _instance.IsCharging = batteryReport.IsCharging;
+                
+                _daemon?.Update(_instance);
+            }
+
+            Emit?.Invoke(report);
+        }
+
+        public override void BringToDaemon()
+        {
+            if (_daemon == null)
+                return;
+
+            _instance = new WirelessKitInstance(_tablet!.Properties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
+
+            _daemon.Add(_instance);
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void OnDaemonReady(object? sender, EventArgs e)
+        {
+            _daemon = WirelessKitDaemonBase.Instance;
+            Initialize(_driver, _tablet);
+        }
 
         #endregion
 
         #region Static Methods
 
-        private IEnumerable<IDeviceEndpoint> GetMatchingDevices(Driver driver, TabletConfiguration configuration, DeviceIdentifier identifier)
+        private static IEnumerable<IDeviceEndpoint> GetMatchingDevices(Driver driver, TabletConfiguration configuration, DeviceIdentifier identifier)
         {
             return from device in driver.CompositeDeviceHub.GetDevices()
                    where identifier.VendorID == device.VendorID
@@ -209,9 +241,18 @@ namespace WirelessKitAddon
     
         #region Disposal
 
-        public void Dispose()
+        public override void Dispose()
         {
-            
+            if (_instance != null && _daemon != null)
+                _daemon.Remove(_instance);
+
+            WirelessKitDaemonBase.Ready -= OnDaemonReady;
+            _instance = null;
+            _daemon = null;
+
+            _trayManager?.Dispose();
+
+            GC.SuppressFinalize(this);
         }
 
         #endregion

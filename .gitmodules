@@ -4,3 +4,6 @@
 [submodule "OpenTabletDriver-0.6.x"]
 	path = .modules/OpenTabletDriver-0.6.x
 	url = https://github.com/OpenTabletDriver/OpenTabletDriver.git
+[submodule ".modules/DesktopNotifications"]
+	path = .modules/DesktopNotifications
+	url = https://github.com/pr8x/DesktopNotifications.git

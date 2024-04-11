@@ -23,6 +23,14 @@ namespace WirelessKitAddon.Lib.RPC
             this.ConnectionStateChanged = null!;
         }
 
+        public RpcServer(string pipeName, T instance)
+        {
+            this.pipeName = pipeName;
+            this.rpc = null!;
+            this.ConnectionStateChanged = null!;
+            this.Instance = instance;
+        }
+
         public event EventHandler<bool> ConnectionStateChanged;
 
         public T Instance { protected set; get; } = new T();

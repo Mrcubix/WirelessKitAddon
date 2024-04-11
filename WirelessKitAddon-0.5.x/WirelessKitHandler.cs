@@ -12,13 +12,15 @@ using HidSharp;
 using System.Linq;
 using System;
 using OpenTabletDriver.Devices;
+using WirelessKitAddon.Lib;
+using WirelessKitAddon.Interfaces;
 
 #if OTD05
 
 namespace WirelessKitAddon
 {
     [PluginName("Wireless Kit Addon")]
-    public class WirelessKitHandler : IFilter
+    public class WirelessKitHandler : WirelessKitHandlerBase, IFilter, IDisposable
     {
         #region Constants
 
@@ -40,80 +42,90 @@ namespace WirelessKitAddon
             OutputReportLength = 0,
             ReportParser = typeof(WirelessReportParser).FullName ?? string.Empty,
             FeatureInitReport = new byte[2] { 0x02, 0x02 },
-            OutputInitReport = null,
+            OutputInitReport = null!,
             DeviceStrings = new(),
             InitializationStrings = new()
         };
 
         #endregion
-        
+
         #region Fields
 
-        private Driver? driver;
-        private TabletState? tablet;
-        private IOutputMode? outputMode;
-        private DeviceReader<IDeviceReport>? reader;
+        private TabletState? _tablet;
+        private IOutputMode? _outputMode;
+        private DeviceReader<IDeviceReport>? _reader;
 
         #endregion
 
         #region Initialization
 
-        public WirelessKitHandler()
+        public WirelessKitHandler() : base()
         {
+            WirelessKitDaemonBase.Ready += OnDaemonReady;
+
             _ = Task.Run(LateInitializeAsync);
         }
 
         public async Task LateInitializeAsync()
         {
             await Task.Delay(15);
+            Initialize();
+        }
 
-            driver = Info.Driver as Driver;
-            tablet = driver?.Tablet;
-            outputMode = driver?.OutputMode;
+        public void Initialize()
+        {
+            _driver = Info.Driver as Driver;
+            _tablet = _driver?.Tablet;
+            _outputMode = _driver?.OutputMode;
 
-            if (driver == null || tablet == null || outputMode == null)
+            if (_driver == null || _tablet == null || _outputMode == null)
                 return;
 
             // Tablet needs to be handled differently depending on whether it's in wireless mode or not
-            if (tablet.Digitizer.VendorID == WACOM_VID && tablet.Digitizer.ProductID == WIRELESS_KIT_PID)
-                HandleWirelessKit();
+            if (_tablet.Digitizer.VendorID == WACOM_VID && _tablet.Digitizer.ProductID == WIRELESS_KIT_PID)
+                HandleWirelessKit((_driver as Driver)!);
             // Any of the tablets identifiers PID matches the supported && vendorID is Wacom's vendorID
-            else if (tablet.Digitizer.VendorID == WACOM_VID && SUPPORTED_TABLETS.Contains(tablet.Digitizer.ProductID))
-                HandleWiredTablet();
+            else if (_tablet.Digitizer.VendorID == WACOM_VID && SUPPORTED_TABLETS.Contains(_tablet.Digitizer.ProductID))
+                HandleWiredTablet((_driver as Driver)!);
 
-            if (reader == null)
-                Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {tablet.TabletProperties.Name}", LogLevel.Warning);
+            if (_reader == null)
+                Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {_tablet.TabletProperties.Name}", LogLevel.Warning);
             else
-                Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {tablet.TabletProperties.Name}", LogLevel.Info);
+            {
+                BringToDaemon();
+
+                if (_daemon != null && _instance != null)
+                {
+                    _ = Task.Run(SetupTrayIcon);
+
+                    Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                }
+            }
         }
 
-        #endregion
-
-        #region Methods
-
-        private void HandleWirelessKit()
+        protected override void HandleWirelessKit(Driver driver)
         {
-            var matches = GetMatchingDevices(driver!, tablet!.TabletProperties, wirelessKitIdentifier);
+            var matches = GetMatchingDevices(driver, _tablet!.TabletProperties, wirelessKitIdentifier);
 
-            HandleMatch(driver!, matches);
+            HandleMatch(matches);
         }
 
-        private void HandleWiredTablet()
+        protected override void HandleWiredTablet(Driver driver)
         {
             // We need to find the inputTree with an identifier of input length 10
-            var identifier = tablet!.TabletProperties.DigitizerIdentifiers.FirstOrDefault(identifier => identifier.InputReportLength == 10 ||
-                                                                                                       identifier.InputReportLength == 11);
+            var identifier = _tablet!.TabletProperties.DigitizerIdentifiers.FirstOrDefault(identifier => identifier.InputReportLength == 10 ||
+                                                                                                         identifier.InputReportLength == 11);
 
             if (identifier == null)
                 return;
 
             // we need to create a copy of the device and change the parser to our wireless parser
-            var matches = GetMatchingDevices(driver!, tablet.TabletProperties, identifier);
+            var matches = GetMatchingDevices(driver, _tablet.TabletProperties, identifier);
 
-            HandleMatch(driver!, matches);
+            HandleMatch(matches);
         }
 
-        private bool HandleMatch(Driver driver, IEnumerable<HidDevice> matches)
+        private bool HandleMatch(IEnumerable<HidDevice> matches)
         {
             if (matches.Count() > 1)
                 Log.Write("Wireless Kit Addon", "Multiple devices matched the Wireless Kit identifier. This is unexpected.", LogLevel.Warning);
@@ -125,8 +137,8 @@ namespace WirelessKitAddon
 
                 try
                 {
-                    reader = new DeviceReader<IDeviceReport>(match, new WirelessReportParser());
-                    reader.Report += (_, report) => driver.HandleReport(report);
+                    _reader = new DeviceReader<IDeviceReport>(match, new WirelessReportParser());
+                    _reader.Report += HandleReport;
                 }
                 catch (Exception ex)
                 {
@@ -135,7 +147,7 @@ namespace WirelessKitAddon
                 }
             }
 
-            return reader != null;
+            return _reader != null;
         }
 
         #endregion
@@ -149,6 +161,39 @@ namespace WirelessKitAddon
         #region Methods
 
         public Vector2 Filter(Vector2 point) => point;
+
+        public override void BringToDaemon()
+        {
+            if (_daemon == null)
+                return;
+
+            var instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
+
+            _daemon.Add(instance);
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void OnDaemonReady(object? sender, EventArgs e)
+        {
+            _daemon = WirelessKitDaemonBase.Instance;
+        }
+
+        public void HandleReport(object? sender, IDeviceReport report)
+        {
+            if (_instance == null)
+                return;
+
+            if (report is IBatteryReport batteryReport)
+            {
+                _instance.BatteryLevel = batteryReport.Battery;
+                _instance.IsCharging = batteryReport.IsCharging;
+
+                _daemon?.Update(_instance);
+            }
+        }
 
         #endregion
 
@@ -176,6 +221,31 @@ namespace WirelessKitAddon
                 Log.Exception(ex);
                 return false;
             }
+        }
+
+        #endregion
+
+        #region Disposal
+
+        public override void Dispose()
+        {
+            if (_reader != null)
+            {
+                _reader.Report -= HandleReport;
+                _reader.Dispose();
+                _reader = null;
+            }
+
+            if (_instance != null && _daemon != null)
+                _daemon.Remove(_instance);
+
+            WirelessKitDaemonBase.Ready -= OnDaemonReady;
+            _instance = null;
+            _daemon = null;
+
+            _trayManager?.Dispose();
+
+            GC.SuppressFinalize(this);
         }
 
         #endregion

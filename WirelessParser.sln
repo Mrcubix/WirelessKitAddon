@@ -9,6 +9,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon-0.6.x", "W
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon.Lib", "WirelessKitAddon.Lib\WirelessKitAddon.Lib.csproj", "{C8F55956-1EDE-43F2-A73E-86D2A1414538}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon.UX", "WirelessKitAddon.UX\WirelessKitAddon.UX.csproj", "{BB6A077B-EFC5-43A6-ADE9-B933455E71B2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon.UX.Desktop", "WirelessKitAddon.UX.Desktop\WirelessKitAddon.UX.Desktop.csproj", "{78A22917-21AF-447C-BCE1-28F3DCA39809}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WirelessKitAddon.UX.Windows", "WirelessKitAddon.UX.Windows\WirelessKitAddon.UX.Windows.csproj", "{3D120335-3756-4C09-BABC-7B86ABA51561}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +36,17 @@ Global
 		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C8F55956-1EDE-43F2-A73E-86D2A1414538}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BB6A077B-EFC5-43A6-ADE9-B933455E71B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BB6A077B-EFC5-43A6-ADE9-B933455E71B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BB6A077B-EFC5-43A6-ADE9-B933455E71B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BB6A077B-EFC5-43A6-ADE9-B933455E71B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78A22917-21AF-447C-BCE1-28F3DCA39809}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78A22917-21AF-447C-BCE1-28F3DCA39809}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78A22917-21AF-447C-BCE1-28F3DCA39809}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78A22917-21AF-447C-BCE1-28F3DCA39809}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D120335-3756-4C09-BABC-7B86ABA51561}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D120335-3756-4C09-BABC-7B86ABA51561}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D120335-3756-4C09-BABC-7B86ABA51561}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D120335-3756-4C09-BABC-7B86ABA51561}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

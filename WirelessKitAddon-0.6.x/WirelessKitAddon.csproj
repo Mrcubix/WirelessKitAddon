@@ -2,10 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
+    <NoWarn>$(NoWarn); NETSDK1138; VSTHRD200; NU1902; NU1903</NoWarn>
     <RootNamespace>WirelessKitAddon</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DefineConstants>$(DefineConstants);OTD06</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <!-- We just re-use the source code of the 0.5.x version of the addon minus some files -->

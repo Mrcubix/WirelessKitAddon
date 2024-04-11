@@ -2,6 +2,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Launch UX (Unix)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/WirelessKitAddon.UX.Desktop/bin/Debug/net8.0/WirelessKitBatteryStatus.UX.exe",
+            "args": ["Wacom CTH-470"],
+            "cwd": "${workspaceFolder}/WirelessKitAddon.UX.Desktop",
+            "stopAtEntry": false,
+        },
+        {
+            "name": "Launch UX (Windows)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/WirelessKitAddon.UX.Windows/bin/Debug/net8.0/WirelessKitBatteryStatus.UX.exe",
+            "args": ["Wacom CTH-470"],
+            "cwd": "${workspaceFolder}/WirelessKitAddon.UX.Windows",
+            "stopAtEntry": false,
+        },
+        {
             "name": "OpenTabletDriver C# Plugin Debugging",
             "type": "coreclr",
             "request": "attach",

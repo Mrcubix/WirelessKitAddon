@@ -2,19 +2,27 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace WirelessKitAddon.Lib
 {
-    public class WirelessKitInstance : ObservableObject
+    public partial class WirelessKitInstance : ObservableObject
     {
-        public WirelessKitInstance(string name, float batteryLevel, bool isCharging)
+        [ObservableProperty]
+        private string _name = string.Empty;
+
+        [ObservableProperty]
+        private float _batteryLevel;
+
+        [ObservableProperty]
+        private bool _isCharging;
+
+        public WirelessKitInstance(string name, float batteryLevel, bool isCharging = false, float earlyWarningSetting = 30, float lateWarningSetting = 10)
         {
             Name = name;
             BatteryLevel = batteryLevel;
             IsCharging = isCharging;
+            EarlyWarningSetting = earlyWarningSetting;
+            LateWarningSetting = lateWarningSetting;
         }
 
-        public string Name { get; }
-
-        public float BatteryLevel { get; }
-
-        public bool IsCharging { get; }
+        public float EarlyWarningSetting { get; }
+        public float LateWarningSetting { get; }
     }
 }
