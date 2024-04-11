@@ -1,0 +1,29 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:WirelessKitAddon.UX"
+             xmlns:vm="using:WirelessKitAddon.UX.ViewModels"
+             x:Class="WirelessKitAddon.UX.App"
+             RequestedThemeVariant="Dark"
+             x:DataType="vm:WirelessKitViewModel">
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon Icon="{Binding CurrentIcon}"
+                      ToolTipText="{Binding CurrentToolTip}">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="Quit" Command="{Binding QuitCommand}"/>
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+</Application>
