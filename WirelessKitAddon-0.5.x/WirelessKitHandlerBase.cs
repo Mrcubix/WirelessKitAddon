@@ -32,16 +32,16 @@ namespace WirelessKitAddon.Lib
 
         #region Properties
 
-        [SliderProperty("Early Low Battery Notification Threshold", -1, 100, 30),
-         DefaultPropertyValue(30),
+        [SliderProperty("Early Low Battery Notification Threshold", -1f, 100f, 30f),
+         DefaultPropertyValue(30f),
          Unit("%"),
          ToolTip("WirelessKitAddon: \n\n" +
                  "The battery level at which the user should be warned for the last time.\n" +
                  "-1 means that this warning is disabled.")]
         public float EarlyWarningSetting { get; set; }
 
-        [SliderProperty("Late Low Battery Notification Threshold", -1, 100, 10),
-         DefaultPropertyValue(10),
+        [SliderProperty("Late Low Battery Notification Threshold", -1f, 100f, 10f),
+         DefaultPropertyValue(10f),
          Unit("%"),
          ToolTip("WirelessKitAddon: \n\n" +
                  "The battery level at which the user should be warned for the last time.\n" +
