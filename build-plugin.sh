@@ -62,7 +62,7 @@ do
     echo "Building WirelessKitAddon-$version"
     
     # Exit on failure
-    dotnet publish WirelessKitAddon-$version -c Debug -o ./temp/plugin/$version || exit 1
+    dotnet publish WirelessKitAddon-$version -c Release -o ./temp/plugin/$version || exit 1
 
     # Move WirelessKitAddon-$version.dll to ./build/plugin/$version then cd to it and zip it
     mv ./temp/plugin/$version/WirelessKitAddon.dll ./build/plugin/$version
