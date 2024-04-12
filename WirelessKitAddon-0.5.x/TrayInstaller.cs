@@ -52,10 +52,7 @@ namespace WirelessKitAddon.Lib
             try
             {
                 if (!await Download())
-                {
                     Log.Write("Wireless Kit Addon", "The latest version of the Wireless Kit Addon is already installed.", LogLevel.Info);
-                    return false;
-                }
             }
             catch (Exception)
             {
@@ -132,8 +129,12 @@ namespace WirelessKitAddon.Lib
             // Check to see if the version is up to date
             data = await client.DownloadFile(versionUrl);
 
+            Log.Write("Wireless Kit Addon", $"Checking for updates...", LogLevel.Info);
+
             if (version == current)
                 return false;
+
+            Log.Write("Wireless Kit Addon", $"Downloading the latest version of the Wireless Kit Addon...", LogLevel.Info);
 
             var downloadPath = Path.Combine(_directory!.FullName, _filename);
 
