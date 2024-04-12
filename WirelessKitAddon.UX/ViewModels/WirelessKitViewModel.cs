@@ -63,8 +63,6 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         if (args.Length > 0)
             _tabletName = args[0];
 
-        File.WriteAllText("tablet-kit.txt", _tabletName);
-
         _daemonClient = new RpcClient<IWirelessKitDaemon>("WirelessKitDaemon");
 
         var icons = LoadBitmaps(

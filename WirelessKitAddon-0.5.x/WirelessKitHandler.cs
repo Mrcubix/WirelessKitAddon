@@ -78,7 +78,7 @@ namespace WirelessKitAddon
             _tablet = _driver?.Tablet;
             _outputMode = _driver?.OutputMode;
 
-            if (_driver == null || _tablet == null || _outputMode == null)
+            if (_driver == null || _tablet == null || _outputMode == null || _daemon == null)
                 return;
 
             // Tablet needs to be handled differently depending on whether it's in wireless mode or not
@@ -139,6 +139,7 @@ namespace WirelessKitAddon
                 {
                     _reader = new DeviceReader<IDeviceReport>(match, new WirelessReportParser());
                     _reader.Report += HandleReport;
+                    _reader.ReadingChanged += OnConnectionStateChanged;
                 }
                 catch (Exception ex)
                 {
@@ -167,9 +168,27 @@ namespace WirelessKitAddon
             if (_daemon == null)
                 return;
 
-            var instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
+            _instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
 
-            _daemon.Add(instance);
+            _daemon.Add(_instance);
+        }
+
+        private void StopHandling()
+        {
+            if (_instance != null && _daemon != null)
+            {
+                _daemon.Remove(_instance);
+                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                _instance = null;
+            }
+
+            if (_reader != null)
+            {
+                _reader.Report -= HandleReport;
+                _reader.ReadingChanged -= OnConnectionStateChanged;
+                _reader.Dispose();
+                _reader = null;
+            }
         }
 
         #endregion
@@ -179,6 +198,15 @@ namespace WirelessKitAddon
         private void OnDaemonReady(object? sender, EventArgs e)
         {
             _daemon = WirelessKitDaemonBase.Instance;
+
+            if (_instance == null)
+                Initialize();
+        }
+
+        private void OnConnectionStateChanged(object? sender, bool connected)
+        {
+            if (connected == false)
+                StopHandling();
         }
 
         public void HandleReport(object? sender, IDeviceReport report)
@@ -229,6 +257,9 @@ namespace WirelessKitAddon
 
         public override void Dispose()
         {
+            if (_instance != null && _daemon != null)
+               StopHandling();
+
             if (_reader != null)
             {
                 _reader.Report -= HandleReport;
@@ -236,11 +267,7 @@ namespace WirelessKitAddon
                 _reader = null;
             }
 
-            if (_instance != null && _daemon != null)
-                _daemon.Remove(_instance);
-
             WirelessKitDaemonBase.Ready -= OnDaemonReady;
-            _instance = null;
             _daemon = null;
 
             _trayManager?.Dispose();

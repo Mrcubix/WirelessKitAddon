@@ -133,6 +133,7 @@ namespace WirelessKitAddon
                 try
                 {
                     device = new InputDevice(driver, match, Tablet!.Properties, wirelessKitIdentifier);
+                    device.ConnectionStateChanged += OnConnectionStateChanged;
                 }
                 catch (Exception ex)
                 {
@@ -147,6 +148,27 @@ namespace WirelessKitAddon
             }
 
             return DeviceTree != null;
+        }
+
+        private void StopHandling()
+        {
+            if (_instance != null && _daemon != null)
+            {
+                _daemon.Remove(_instance);
+                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                _instance = null;
+            }
+
+            if (DeviceTree != null)
+            {
+                foreach (var device in DeviceTree.InputDevices)
+                {
+                    device.ConnectionStateChanged -= OnConnectionStateChanged;
+                    device.Dispose();
+                }
+
+                DeviceTree = null;
+            }
         }
 
         #endregion
@@ -222,6 +244,12 @@ namespace WirelessKitAddon
             Initialize(_driver, _tablet);
         }
 
+        private void OnConnectionStateChanged(object? sender, bool connected)
+        {
+            if (connected == false)
+                StopHandling();
+        }
+
         #endregion
 
         #region Static Methods
@@ -244,7 +272,15 @@ namespace WirelessKitAddon
         public override void Dispose()
         {
             if (_instance != null && _daemon != null)
-                _daemon.Remove(_instance);
+                StopHandling();
+
+            if (DeviceTree != null)
+            {
+                foreach (var device in DeviceTree.InputDevices)
+                    device.Dispose();
+
+                DeviceTree = null;
+            }
 
             WirelessKitDaemonBase.Ready -= OnDaemonReady;
             _instance = null;
