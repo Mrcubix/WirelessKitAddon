@@ -11,6 +11,11 @@ You can choose your own battery percentage threshold for the notification.
 
 ![settings](images/settings.png)
 
+# Dependencies
+
+- OpenTabletDriver (And its dependencies),
+- .NET 8.0 Desktop Runtime (for the Tray icon & notifications), [Link](https://dotnet.microsoft.com/en-us/download/dotnet/8.0#:~:text=.NET%20Desktop%20Runtime)
+
 ## Compatibility
 
 - OpenTabletDriver 0.5.3.3 (for `WirelessKitAddon-0.5.x.zip`)
