@@ -91,7 +91,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
     private void InitializeClient()
     {
         _daemonClient.Connected += OnDaemonConnected;
-        _daemonClient.Attached += OnClientAttached;
+        _daemonClient.Attached += OnDaemonAttached;
         _daemonClient.Disconnected += OnDaemonDisconnected;
 
         _ = Task.Run(ConnectRpcAsync);
@@ -262,12 +262,13 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         IsConnected = true;
     }
 
-    private void OnClientAttached(object? sender, EventArgs e)
+    private void OnDaemonAttached(object? sender, EventArgs e)
     {
         if (!IsConnected)
             return;
 
         _daemon = _daemonClient.Instance;
+        _daemon.InstanceRemoved += OnInstanceRemoved;
 
         _ = Task.Run(FetchInfos);
     }
@@ -287,6 +288,12 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             CurrentInstance.BatteryLevel = instance.BatteryLevel;
             CurrentInstance.IsCharging = instance.IsCharging;
         }
+    }
+
+    private void OnInstanceRemoved(object? sender, WirelessKitInstance instance)
+    {
+        if (instance.Name == CurrentInstance?.Name)
+            CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnInstancePropertiesChanged(object? sender, PropertyChangedEventArgs e)
@@ -317,7 +324,11 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        if (_daemon != null)
+            _daemon.InstanceUpdated -= OnInstanceChanged;
+
         _daemonClient.Connected -= OnDaemonConnected;
+        _daemonClient.Attached -= OnDaemonAttached;
         _daemonClient.Disconnected -= OnDaemonDisconnected;
         _daemonClient.Dispose();
 
