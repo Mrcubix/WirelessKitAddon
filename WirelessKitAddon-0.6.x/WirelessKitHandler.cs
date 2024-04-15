@@ -66,6 +66,7 @@ namespace WirelessKitAddon
 
         public void Initialize(IDriver? driver, TabletReference? tablet)
         {
+            // instantly remove the event handler to prevent multiple initializations
             WirelessKitDaemonBase.Ready -= OnDaemonReady;
 
             if (driver is Driver _driver && tablet != null)
@@ -137,6 +138,7 @@ namespace WirelessKitAddon
 
                 try
                 {
+                    // Create a device from the match & start checking if it disconnects
                     _device = new InputDevice(driver, match, Tablet!.Properties, wirelessKitIdentifier);
                     _device.ConnectionStateChanged += OnConnectionStateChanged;
                 }
@@ -155,27 +157,6 @@ namespace WirelessKitAddon
             SetBatterySavingModeTimeout();
 
             return DeviceTree != null;
-        }
-
-        private void StopHandling()
-        {
-            if (_instance != null && _daemon != null)
-            {
-                _daemon.Remove(_instance);
-                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
-                _instance = null;
-            }
-
-            if (DeviceTree != null)
-            {
-                foreach (var device in DeviceTree.InputDevices)
-                {
-                    device.ConnectionStateChanged -= OnConnectionStateChanged;
-                    device.Dispose();
-                }
-
-                DeviceTree = null;
-            }
         }
 
         #endregion
@@ -273,7 +254,9 @@ namespace WirelessKitAddon
         private void OnDaemonReady(object? sender, EventArgs e)
         {
             _daemon = WirelessKitDaemonBase.Instance;
-            Initialize(_driver, _tablet);
+
+            if (_instance == null)
+                Initialize(_driver, _tablet);
         }
 
         private void OnConnectionStateChanged(object? sender, bool connected)
@@ -300,6 +283,30 @@ namespace WirelessKitAddon
         #endregion
     
         #region Disposal
+
+        private void StopHandling()
+        {
+            // Daemon remove will just be replaced by a rpc dispose when the daemon will get nuked
+            if (_instance != null && _daemon != null)
+            {
+                _daemon.Remove(_instance);
+                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                _instance = null;
+            }
+
+            // Dispose of the devices themselves, 
+            // No need to dispose of the output mode as it's not owned by us
+            if (DeviceTree != null)
+            {
+                foreach (var device in DeviceTree.InputDevices)
+                {
+                    device.ConnectionStateChanged -= OnConnectionStateChanged;
+                    device.Dispose();
+                }
+
+                DeviceTree = null;
+            }
+        }
 
         public override void Dispose()
         {

@@ -24,11 +24,13 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 {
     #region Fields
 
-    private ObservableCollection<WindowIcon> _icons = new();
+    private readonly ObservableCollection<WindowIcon> _icons = [];
 
-    private RpcClient<IWirelessKitDaemon> _daemonClient;
+    private readonly RpcClient<IWirelessKitDaemon> _daemonClient;
 
-    private INotificationManager? _notificationManager;
+    private readonly INotificationManager? _notificationManager;
+
+    private readonly string _tabletName = "No tablet detected";
 
     private IWirelessKitDaemon? _daemon;
 
@@ -37,11 +39,11 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
     // Time before the battery level is checked when the tablet is connected, neccessary as the battery level is not updated immediately
     private TimeSpan _beforeActive = TimeSpan.FromSeconds(5);
 
-    private string _tabletName = "No tablet detected";
-
+    // We don't want to spam the user with notifications so we make sure that we didn't already send a notification
     private bool _pastEarlyWarning;
     private bool _pastLateWarning;
 
+    // Keep track of the last state, shouldn't be needed when nuking the daemon plugin & passing the instance directly
     private bool _lastConnectedState;
     private float _lastBatteryLevel;
     private bool _lastChargingState;
@@ -71,6 +73,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         if (args != null && args.Length > 0)
             _tabletName = args[0];
 
+        // Name will become WirelessKitInstance-{tabletName} when nuking the daemon plugin, provided it isn't null or empty
         _daemonClient = new RpcClient<IWirelessKitDaemon>("WirelessKitDaemon");
 
         var icons = LoadBitmaps(
@@ -94,6 +97,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         InitializeClient();
     }
 
+    // Most of this won't be needed when nuking the daemon plugin
     private void InitializeClient()
     {
         _daemonClient.Connected += OnDaemonConnected;
@@ -136,9 +140,10 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         {
             try
             {
+                // Won't be needed when nuking the daemon plugin
                 CurrentInstance = await _daemon.GetInstance(_tabletName);
 
-                if (CurrentInstance != null)
+                if (CurrentInstance != null) // will also be able to subscribe to it directly
                     CurrentInstance.PropertyChanged += OnInstancePropertiesChanged;
             }
             catch (Exception e)
@@ -306,6 +311,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             if (CurrentInstance.IsCharging != _lastChargingState)
                 CurrentToolTip = BuildToolTip(CurrentInstance);
 
+            // A timeout is needed to make sure that the battery level is updated when the tablet is connected
             if (_lastConnectedState != instance.IsConnected && instance.IsConnected)
                 _connectedAt = DateTime.Now;
 
@@ -313,6 +319,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
                (DateTime.Now - _connectedAt) > _beforeActive)
                 HandleWarnings();
 
+            // Keep track of the last state, shouldn't be needed when nuking the daemon plugin & passing the instance directly
             _lastConnectedState = instance.IsConnected;
             _lastBatteryLevel = CurrentInstance.BatteryLevel;
             _lastChargingState = CurrentInstance.IsCharging;
@@ -321,11 +328,11 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     private void OnInstanceRemoved(object? sender, WirelessKitInstance instance)
     {
-        if (instance.Name == CurrentInstance?.Name)
+        if (instance.Name == CurrentInstance?.Name) // No reasons to keep this tray icon alive
             CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    // Unused for now
+    // Unused for now will be used when nuking the daemon plugin
     private void OnInstancePropertiesChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is WirelessKitInstance instance)

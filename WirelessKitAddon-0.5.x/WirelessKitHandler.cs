@@ -197,24 +197,6 @@ namespace WirelessKitAddon
             }
         }
 
-        private void StopHandling()
-        {
-            if (_instance != null && _daemon != null)
-            {
-                _daemon.Remove(_instance);
-                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
-                _instance = null;
-            }
-
-            if (_reader != null)
-            {
-                _reader.Report -= HandleReport;
-                _reader.ReadingChanged -= OnConnectionStateChanged;
-                _reader.Dispose();
-                _reader = null;
-            }
-        }
-
         #endregion
 
         #region Event Handlers
@@ -229,7 +211,7 @@ namespace WirelessKitAddon
 
         private void OnConnectionStateChanged(object? sender, bool connected)
         {
-            if (connected == false)
+            if (connected == false) // Pre-Dispose on disconnect
                 StopHandling();
         }
 
@@ -281,6 +263,27 @@ namespace WirelessKitAddon
         #endregion
 
         #region Disposal
+
+        private void StopHandling()
+        {
+            // Daemon remove will just be replaced by a rpc dispose when the daemon will get nuked
+            if (_instance != null && _daemon != null)
+            {
+                _daemon.Remove(_instance);
+                Log.Write("Wireless Kit Addon", $"Stopped handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                _instance = null;
+            }
+
+            // Dispose of the reader, 
+            // No need to dispose of the output mode as it's not owned by us
+            if (_reader != null)
+            {
+                _reader.Report -= HandleReport;
+                _reader.ReadingChanged -= OnConnectionStateChanged;
+                _reader.Dispose();
+                _reader = null;
+            }
+        }
 
         public override void Dispose()
         {
