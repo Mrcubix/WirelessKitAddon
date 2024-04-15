@@ -11,10 +11,18 @@ You can choose your own battery percentage threshold for the notification.
 
 ![settings](images/settings.png)
 
-# Dependencies
+## Dependencies
+
+### For All Platforms
 
 - OpenTabletDriver (And its dependencies),
 - .NET 8.0 Desktop Runtime (for the Tray icon & notifications), [Link](https://dotnet.microsoft.com/en-us/download/dotnet/8.0#:~:text=.NET%20Desktop%20Runtime)
+
+### For Linux Only
+
+- libnotify-bin,
+- notification-daemon,
+- dbus.
 
 ## Compatibility
 

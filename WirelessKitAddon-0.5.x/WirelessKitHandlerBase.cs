@@ -48,11 +48,21 @@ namespace WirelessKitAddon.Lib
                  "-1 means that this warning is disabled.")]
         public float LateWarningSetting { get; set; }
 
+        [Property("Switch to power saving mode after"),
+         DefaultPropertyValue(2),
+         Unit("minutes"),
+         ToolTip("WirelessKitAddon: \n\n" +
+                 "The time after which the tablet should switch to power saving mode. \n" +
+                 "Minimum value: 1 minute, Maximum value: 20 minutes.")]
+        public int PowerSavingTimeout { get; set; }
+
         #endregion
 
         #region Methods
 
         public abstract void BringToDaemon();
+
+        public abstract void SetBatterySavingModeTimeout();
 
         public async Task SetupTrayIcon()
         {
@@ -67,13 +77,7 @@ namespace WirelessKitAddon.Lib
                 return;
             }
 
-            if (_trayManager.Start(_instance.Name) == false)
-            {
-                Log.Write("Wireless Kit Addon", "Failed to start the tray icon.", LogLevel.Error);
-                return;
-            }
-
-            Log.Write("Wireless Kit Addon", "Tray icon started successfully.", LogLevel.Info);
+            _trayManager.Start(_instance.Name);
         }
 
         #endregion

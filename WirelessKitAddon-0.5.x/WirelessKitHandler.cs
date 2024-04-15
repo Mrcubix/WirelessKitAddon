@@ -29,6 +29,9 @@ namespace WirelessKitAddon
         private const ushort WIRELESS_KIT_IDENTIFIER_INPUT_LENGTH = 32;
         private const ushort WIRELESS_KIT_IDENTIFIER_OUTPUT_LENGTH = 259;
 
+        private const byte POWER_SAVING_MIN_TIMEOUT = 1;
+        private const byte POWER_SAVING_MAX_TIMEOUT = 20;
+
         // The PID of all supported tablets
         private readonly ImmutableArray<int> SUPPORTED_TABLETS = ImmutableArray.Create<int>(
             209, 210, 211, 214, 215, 219, 222, 223, 770, 771, 828, 830
@@ -51,6 +54,7 @@ namespace WirelessKitAddon
 
         #region Fields
 
+        private readonly byte[] _powerSavingReport = new byte[13] { 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
         private TabletState? _tablet;
         private IOutputMode? _outputMode;
         private DeviceReader<IDeviceReport>? _reader;
@@ -68,8 +72,8 @@ namespace WirelessKitAddon
 
         public async Task LateInitializeAsync()
         {
-            await Task.Delay(15);
-            Initialize();
+            await Task.Delay(30);
+            //Initialize();
         }
 
         public void Initialize()
@@ -96,6 +100,7 @@ namespace WirelessKitAddon
 
                 if (_daemon != null && _instance != null)
                 {
+                    WirelessKitDaemonBase.Ready -= OnDaemonReady;
                     _ = Task.Run(SetupTrayIcon);
 
                     Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
@@ -148,6 +153,8 @@ namespace WirelessKitAddon
                 }
             }
 
+            SetBatterySavingModeTimeout();
+
             return _reader != null;
         }
 
@@ -168,9 +175,26 @@ namespace WirelessKitAddon
             if (_daemon == null)
                 return;
 
-            _instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
+            _instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, false, 0, false, EarlyWarningSetting, LateWarningSetting);
 
             _daemon.Add(_instance);
+        }
+
+        public override void SetBatterySavingModeTimeout()
+        {
+            if (_reader == null)
+                return;
+
+            _powerSavingReport[2] = Math.Clamp((byte)PowerSavingTimeout, POWER_SAVING_MIN_TIMEOUT, POWER_SAVING_MAX_TIMEOUT);
+
+            try
+            {
+                _reader.ReportStream.SetFeature(_powerSavingReport);
+            }
+            catch (Exception)
+            {
+                Log.Write("Wireless Kit Addon", $"Failed to set the power saving mode timeout.", LogLevel.Error);
+            }
         }
 
         private void StopHandling()
@@ -218,9 +242,12 @@ namespace WirelessKitAddon
             {
                 _instance.BatteryLevel = batteryReport.Battery;
                 _instance.IsCharging = batteryReport.IsCharging;
-
-                _daemon?.Update(_instance);
             }
+
+            if (report is IWirelessKitReport wirelessReport)
+                _instance.IsConnected = wirelessReport.IsConnected;
+
+            _daemon?.Update(_instance);
         }
 
         #endregion

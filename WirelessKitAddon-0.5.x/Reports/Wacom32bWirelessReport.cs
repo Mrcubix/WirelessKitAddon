@@ -10,7 +10,7 @@ namespace WirelessKitAddon.Reports
     ///   report[5]: Battery status <br />
     ///   report[6..31]: Unknown <br />
     /// </summary>
-    public class Wacom32bWirelessReport : IBatteryReport
+    public class Wacom32bWirelessReport : IWirelessKitReport
     {
         public Wacom32bWirelessReport(byte[] report)
         {

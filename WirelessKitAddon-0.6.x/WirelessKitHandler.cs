@@ -24,6 +24,9 @@ namespace WirelessKitAddon
         private const ushort WIRELESS_KIT_IDENTIFIER_INPUT_LENGTH = 32;
         private const ushort WIRELESS_KIT_IDENTIFIER_OUTPUT_LENGTH = 259;
 
+        private const byte POWER_SAVING_MIN_TIMEOUT = 1;
+        private const byte POWER_SAVING_MAX_TIMEOUT = 20;
+
         // The PID of all supported tablets
         private readonly ImmutableArray<int> SUPPORTED_TABLETS = ImmutableArray.Create<int>(
             209, 210, 211, 214, 215, 219, 222, 223, 770, 771, 828, 830
@@ -46,7 +49,11 @@ namespace WirelessKitAddon
 
         #region Fields
 
+        private readonly byte[] _powerSavingReport = new byte[13] { 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+
         private TabletReference? _tablet;
+
+        private InputDevice? _device;
 
         #endregion
 
@@ -128,12 +135,10 @@ namespace WirelessKitAddon
                 if (match == null)
                     continue;
 
-                InputDevice device;
-
                 try
                 {
-                    device = new InputDevice(driver, match, Tablet!.Properties, wirelessKitIdentifier);
-                    device.ConnectionStateChanged += OnConnectionStateChanged;
+                    _device = new InputDevice(driver, match, Tablet!.Properties, wirelessKitIdentifier);
+                    _device.ConnectionStateChanged += OnConnectionStateChanged;
                 }
                 catch (Exception ex)
                 {
@@ -141,11 +146,13 @@ namespace WirelessKitAddon
                     continue;
                 }
 
-                DeviceTree = new InputDeviceTree(Tablet.Properties, new List<InputDevice> { device })
+                DeviceTree = new InputDeviceTree(Tablet.Properties, new List<InputDevice> { _device })
                 {
                     OutputMode = OutputMode
                 };
             }
+
+            SetBatterySavingModeTimeout();
 
             return DeviceTree != null;
         }
@@ -213,10 +220,18 @@ namespace WirelessKitAddon
 
         public void Consume(IDeviceReport report)
         {
-            if (_instance != null && report is IBatteryReport batteryReport)
+            if (_instance != null)
             {
-                _instance.BatteryLevel = batteryReport.Battery;
-                _instance.IsCharging = batteryReport.IsCharging;
+                if (report is IBatteryReport batteryReport)
+                {
+                    _instance.BatteryLevel = batteryReport.Battery;
+                    _instance.IsCharging = batteryReport.IsCharging;
+                }
+
+                if (report is IWirelessKitReport wirelessReport)
+                    _instance.IsConnected = wirelessReport.IsConnected;
+                else // Probably not from a wireless kit, not supporting other cases for now
+                    _instance.IsConnected = true;
                 
                 _daemon?.Update(_instance);
             }
@@ -229,9 +244,26 @@ namespace WirelessKitAddon
             if (_daemon == null)
                 return;
 
-            _instance = new WirelessKitInstance(_tablet!.Properties.Name, 0, false, EarlyWarningSetting, LateWarningSetting);
+            _instance = new WirelessKitInstance(_tablet!.Properties.Name, false, 0, false, EarlyWarningSetting, LateWarningSetting);
 
             _daemon.Add(_instance);
+        }
+
+        public override void SetBatterySavingModeTimeout()
+        {
+            if (_device == null)
+                return;
+
+            _powerSavingReport[2] = Math.Clamp((byte)PowerSavingTimeout, POWER_SAVING_MIN_TIMEOUT, POWER_SAVING_MAX_TIMEOUT);
+
+            try
+            {
+                _device.ReportStream.SetFeature(_powerSavingReport);
+            }
+            catch (Exception)
+            {
+                Log.Write("Wireless Kit Addon", $"Failed to set the power saving mode timeout.", LogLevel.Error);
+            }
         }
 
         #endregion
@@ -246,7 +278,7 @@ namespace WirelessKitAddon
 
         private void OnConnectionStateChanged(object? sender, bool connected)
         {
-            if (connected == false)
+            if (connected == false) // Pre-Dispose on disconnect
                 StopHandling();
         }
 

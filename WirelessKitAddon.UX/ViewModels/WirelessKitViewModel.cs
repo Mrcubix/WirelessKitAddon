@@ -32,11 +32,19 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     private IWirelessKitDaemon? _daemon;
 
+    private DateTime _connectedAt;
+
+    // Time before the battery level is checked when the tablet is connected, neccessary as the battery level is not updated immediately
+    private TimeSpan _beforeActive = TimeSpan.FromSeconds(5);
+
     private string _tabletName = "No tablet detected";
 
     private bool _pastEarlyWarning;
-
     private bool _pastLateWarning;
+
+    private bool _lastConnectedState;
+    private float _lastBatteryLevel;
+    private bool _lastChargingState;
 
     #endregion
 
@@ -58,9 +66,9 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     #region Constructors
 
-    public WirelessKitViewModel(string[] args)
+    public WirelessKitViewModel(string[]? args)
     {
-        if (args.Length > 0)
+        if (args != null && args.Length > 0)
             _tabletName = args[0];
 
         _daemonClient = new RpcClient<IWirelessKitDaemon>("WirelessKitDaemon");
@@ -105,6 +113,21 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     #region Methods
 
+    private async Task ConnectRpcAsync()
+    {
+        if (_daemonClient.IsConnected)
+            return;
+
+        try
+        {
+            await _daemonClient.ConnectAsync();
+        }
+        catch (Exception e)
+        {
+            HandleException(e);
+        }
+    }
+
     public async Task FetchInfos()
     {
         CurrentInstance = null;
@@ -143,43 +166,12 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         _daemon.InstanceUpdated += OnInstanceChanged;
     }
 
-    private async Task ConnectRpcAsync()
-    {
-        if (_daemonClient.IsConnected)
-            return;
-
-        try
-        {
-            await _daemonClient.ConnectAsync();
-        }
-        catch (Exception e)
-        {
-            HandleException(e);
-        }
-    }
-
-    [RelayCommand]
-    public void Quit()
-        => CloseRequested?.Invoke(this, EventArgs.Empty);
-
-    public WindowIcon GetBatteryIcon(float batteryLevel)
-    {
-        return batteryLevel switch
-        {
-            0 => _icons[1],
-            > 0 and < 10 => _icons[2],
-            >= 10 and < 33 => _icons[3],
-            >= 33 and < 50 => _icons[4],
-            >= 50 and < 75 => _icons[5],
-            >= 75 => _icons[6],
-            _ => _icons[0]
-        };
-    }
-
     public void HandleWarnings()
     {
         if (CurrentInstance == null)
             return;
+
+        // We don't want to spam the user with notifications so we make sure that we didn't already send a notification
 
         if (CurrentInstance.BatteryLevel <= CurrentInstance.EarlyWarningSetting && !_pastEarlyWarning)
         {
@@ -221,6 +213,24 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
         return toolTip;
     }
+
+    public WindowIcon GetBatteryIcon(float batteryLevel)
+    {
+        return batteryLevel switch
+        {
+            0 => _icons[1],
+            > 0 and < 10 => _icons[2],
+            >= 10 and < 33 => _icons[3],
+            >= 33 and < 50 => _icons[4],
+            >= 50 and < 75 => _icons[5],
+            >= 75 => _icons[6],
+            _ => _icons[0]
+        };
+    }
+
+    [RelayCommand]
+    public void Quit()
+        => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     #endregion
 
@@ -283,8 +293,29 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
     {
         if (instance != null && instance.Name == CurrentInstance?.Name)
         {   
-            CurrentInstance.BatteryLevel = instance.BatteryLevel;
+            CurrentInstance.BatteryLevel = (float)Math.Round(instance.BatteryLevel, 2);
             CurrentInstance.IsCharging = instance.IsCharging;
+
+            // will end up nuking the daemon plugin and use the instance itself instead if testing goes as intended
+            if (CurrentInstance.BatteryLevel != _lastBatteryLevel)
+            {
+                CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel);
+                CurrentToolTip = BuildToolTip(CurrentInstance);
+            }
+            
+            if (CurrentInstance.IsCharging != _lastChargingState)
+                CurrentToolTip = BuildToolTip(CurrentInstance);
+
+            if (_lastConnectedState != instance.IsConnected && instance.IsConnected)
+                _connectedAt = DateTime.Now;
+
+            if (instance.IsConnected && !instance.IsCharging && 
+               (DateTime.Now - _connectedAt) > _beforeActive)
+                HandleWarnings();
+
+            _lastConnectedState = instance.IsConnected;
+            _lastBatteryLevel = CurrentInstance.BatteryLevel;
+            _lastChargingState = CurrentInstance.IsCharging;
         }
     }
 
@@ -294,25 +325,29 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    // Unused for now
     private void OnInstancePropertiesChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is WirelessKitInstance instance)
         {
-            if (e.PropertyName == nameof(WirelessKitInstance.BatteryLevel))
+            switch (e.PropertyName)
             {
-                CurrentIcon = GetBatteryIcon(instance.BatteryLevel);
-                CurrentToolTip = BuildToolTip(instance);
-
-                HandleWarnings();
+                case nameof(WirelessKitInstance.BatteryLevel):
+                    CurrentIcon = GetBatteryIcon(instance.BatteryLevel);
+                    CurrentToolTip = BuildToolTip(instance);
+                    break;
+                case nameof(WirelessKitInstance.IsCharging):
+                    CurrentToolTip = BuildToolTip(instance);
+                    break;
+                case nameof(WirelessKitInstance.IsConnected) when instance.IsConnected:
+                    if (_lastConnectedState != instance.IsConnected)
+                        _connectedAt = DateTime.Now;
+                    break;
             }
 
-            if (e.PropertyName == nameof(WirelessKitInstance.IsCharging))
-            {
-                CurrentToolTip = BuildToolTip(instance);
-
-                if (!instance.IsCharging)
+            if (instance.IsConnected && !instance.IsCharging &&
+               (DateTime.Now - _connectedAt) > _beforeActive)
                     HandleWarnings();
-            }
         }
     }
 

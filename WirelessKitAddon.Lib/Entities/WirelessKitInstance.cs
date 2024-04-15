@@ -8,14 +8,18 @@ namespace WirelessKitAddon.Lib
         private string _name = string.Empty;
 
         [ObservableProperty]
+        private bool _isConnected;
+
+        [ObservableProperty]
         private float _batteryLevel;
 
         [ObservableProperty]
         private bool _isCharging;
 
-        public WirelessKitInstance(string name, float batteryLevel, bool isCharging = false, float earlyWarningSetting = 30, float lateWarningSetting = 10)
+        public WirelessKitInstance(string name, bool isConnected,float batteryLevel, bool isCharging = false, float earlyWarningSetting = 30, float lateWarningSetting = 10)
         {
             Name = name;
+            IsConnected = isConnected;
             BatteryLevel = batteryLevel;
             IsCharging = isCharging;
             EarlyWarningSetting = earlyWarningSetting;
