@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace WirelessKitAddon
 {
@@ -24,8 +25,20 @@ namespace WirelessKitAddon
         }
 
         private static string GetArchitectureCode()
-            => Environment.Is64BitProcess ? "x64" : "x86";
-
+        {
+            // Check if x86 based, arm, ...
+            var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        
+            return arch switch
+            {
+                Architecture.X64 => "x64",
+                Architecture.X86 => "x86",
+                Architecture.Arm => "arm",
+                Architecture.Arm64 => "arm64",
+                _ => string.Empty
+            };
+        }
+        
         private static string GetExecutableExtension()
             => OperatingSystem.IsWindows() ? ".exe" : string.Empty;
     }

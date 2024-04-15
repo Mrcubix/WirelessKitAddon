@@ -75,27 +75,63 @@ namespace WirelessKitAddon.Lib
             if (!IsReady)
                 return false;
 
+            string filename;
+            string arguments;
+
+            if (OperatingSystem.IsWindows())
+            {
+                filename = _appPath;
+                arguments = $"\"{tabletName}\"";
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                filename = _appPath;
+                arguments = $"\"{tabletName}\"";
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                filename = "open";
+                arguments = $"-a \"{_appPath}\" --args \"{tabletName}\"";
+            }
+            else
+            {
+                Log.Write("Wireless Kit Addon", "The tray icon is not supported on this operating system.", LogLevel.Error);
+                return false;
+            }
+
+
             // Run the tray icon
             try
             {
-                var startInfo = new ProcessStartInfo
+                var process = new Process()
                 {
-                    FileName = _appPath,
-                    UseShellExecute = true
-                };
-
-                startInfo.ArgumentList.Add(tabletName);
-
-                var process = new Process
-                {
-                    StartInfo = startInfo
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = filename,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    }
                 };
 
                 process.Start();
+
+                _ = Task.Run(() =>
+                {
+                    var res = process.WaitForExit(500);
+
+                    if (res) // Exited due to an error
+                        Log.Write("Wireless Kit Addon", "The tray icon has exited unexpectedly: \n" +
+                                                       $"{process.StandardOutput.ReadToEnd()}", LogLevel.Error);
+                    else
+                        Log.Write("Wireless Kit Addon", "The tray icon has been started successfully.", LogLevel.Info);
+                });
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                Log.Write("Wireless Kit Addon", "An error occurred while starting the tray icon, attempting to continue...", LogLevel.Warning);
+                Log.Write("Wireless Kit Addon", "An exception occured while starting the tray icon: \n" +
+                                               $"Exception: {e.Message}", LogLevel.Error);
             }
 
             return true;

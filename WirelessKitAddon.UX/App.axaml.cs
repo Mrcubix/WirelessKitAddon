@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Controls.Notifications;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using WirelessKitAddon.UX.ViewModels;
@@ -19,12 +18,6 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
-
-            if (desktop.Args == null || desktop.Args.Length == 0)
-            {
-                desktop.Shutdown();
-                return;
-            }
 
             var vm = new WirelessKitViewModel(desktop.Args);
 

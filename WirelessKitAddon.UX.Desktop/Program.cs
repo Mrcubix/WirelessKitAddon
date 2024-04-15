@@ -11,12 +11,20 @@ sealed class Program
     private static INotificationManager? NotificationManager;
 
     [STAThread]
-    public static void Main(string[] args) 
+    public static void Main(string[] args)
     {
+        if (args == null || args.Length == 0)
+        {
+            Console.WriteLine("No arguments provided, Tablet Name is required.");
+            return;
+        }
+
+        var builder = BuildAvaloniaApp();
+
         // Add the notification manager to the service provider
         Locator.CurrentMutable.RegisterConstant(NotificationManager);
 
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        builder.StartWithClassicDesktopLifetime(args);
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
