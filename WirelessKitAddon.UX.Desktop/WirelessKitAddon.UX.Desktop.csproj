@@ -15,6 +15,7 @@
 
   <PropertyGroup>
     <AssemblyName>WirelessKitBatteryStatus.UX</AssemblyName>
+    <ApplicationIcon>../WirelessKitAddon.UX/Assets/battery_100.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">

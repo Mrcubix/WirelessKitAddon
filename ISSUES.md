@@ -1,0 +1,1 @@
+Icon does not appear on arm64 ?

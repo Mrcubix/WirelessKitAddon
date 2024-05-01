@@ -60,3 +60,8 @@ If all goes well, you should see something simillar to this in the console:
 ![Logs](images/logs.png)
 
 As well as the previously mentioned tray icon.
+
+## Known Issues
+
+- Battery has only 31 different states, so the battery percentage might not be 100% accurate.
+- Wireless Kit will report 100% battery when the tablet is plugged in, this is a limitation of the wireless kit itself.
