@@ -56,6 +56,13 @@ namespace WirelessKitAddon.Lib
                  "Minimum value: 1 minute, Maximum value: 20 minutes.")]
         public int PowerSavingTimeout { get; set; }
 
+        [Property("Time before sending notifications"),
+         DefaultPropertyValue(5),
+         Unit("seconds"),
+         ToolTip("WirelessKitAddon: \n\n" +
+                 "The time before sending notifications when a tablet is connected.\n")]
+        public int NotificationTimeout { get; set; }
+
         #endregion
 
         #region Methods

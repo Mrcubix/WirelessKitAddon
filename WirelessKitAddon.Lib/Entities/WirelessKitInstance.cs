@@ -16,7 +16,13 @@ namespace WirelessKitAddon.Lib
         [ObservableProperty]
         private bool _isCharging;
 
-        public WirelessKitInstance(string name, bool isConnected,float batteryLevel, bool isCharging = false, float earlyWarningSetting = 30, float lateWarningSetting = 10)
+        public WirelessKitInstance(string name, 
+                                   bool isConnected, 
+                                   float batteryLevel, 
+                                   bool isCharging = false,
+                                   float earlyWarningSetting = 30, 
+                                   float lateWarningSetting = 10,
+                                   int timeBeforeNotification = 5)
         {
             Name = name;
             IsConnected = isConnected;
@@ -24,9 +30,11 @@ namespace WirelessKitAddon.Lib
             IsCharging = isCharging;
             EarlyWarningSetting = earlyWarningSetting;
             LateWarningSetting = lateWarningSetting;
+            TimeBeforeNotification = timeBeforeNotification;
         }
 
         public float EarlyWarningSetting { get; }
         public float LateWarningSetting { get; }
+        public int TimeBeforeNotification { get; }
     }
 }

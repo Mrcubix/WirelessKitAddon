@@ -143,8 +143,8 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
                 // Won't be needed when nuking the daemon plugin
                 CurrentInstance = await _daemon.GetInstance(_tabletName);
 
-                if (CurrentInstance != null) // will also be able to subscribe to it directly
-                    CurrentInstance.PropertyChanged += OnInstancePropertiesChanged;
+                //if (CurrentInstance != null) // will also be able to subscribe to it directly
+                //    CurrentInstance.PropertyChanged += OnInstancePropertiesChanged;
             }
             catch (Exception e)
             {
@@ -164,6 +164,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
         if (CurrentInstance != null)
         {
+            _beforeActive = TimeSpan.FromSeconds(CurrentInstance.TimeBeforeNotification);
             CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel);
             CurrentToolTip = BuildToolTip(CurrentInstance);
         }
@@ -171,6 +172,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         _daemon.InstanceUpdated += OnInstanceChanged;
     }
 
+    // TODO: Maybe i don't even need a separate library for notifications on 0.6? looks like Log.Write provide an arg to potentially show a notification?
     public void HandleWarnings()
     {
         if (CurrentInstance == null)
@@ -294,12 +296,17 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    // Currently in use
     private void OnInstanceChanged(object? sender, WirelessKitInstance instance)
     {
         if (instance != null && instance.Name == CurrentInstance?.Name)
         {   
             CurrentInstance.BatteryLevel = (float)Math.Round(instance.BatteryLevel, 2);
             CurrentInstance.IsCharging = instance.IsCharging;
+
+            // A timeout is needed to make sure that the battery level is updated when the tablet is connected
+            if (_lastConnectedState == false && instance.IsConnected)
+                _connectedAt = DateTime.Now;
 
             // will end up nuking the daemon plugin and use the instance itself instead if testing goes as intended
             if (CurrentInstance.BatteryLevel != _lastBatteryLevel)
@@ -310,10 +317,6 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             
             if (CurrentInstance.IsCharging != _lastChargingState)
                 CurrentToolTip = BuildToolTip(CurrentInstance);
-
-            // A timeout is needed to make sure that the battery level is updated when the tablet is connected
-            if (_lastConnectedState != instance.IsConnected && instance.IsConnected)
-                _connectedAt = DateTime.Now;
 
             if (instance.IsConnected && !instance.IsCharging && 
                (DateTime.Now - _connectedAt) > _beforeActive)
@@ -343,12 +346,13 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
                     CurrentIcon = GetBatteryIcon(instance.BatteryLevel);
                     CurrentToolTip = BuildToolTip(instance);
                     break;
+
                 case nameof(WirelessKitInstance.IsCharging):
                     CurrentToolTip = BuildToolTip(instance);
                     break;
-                case nameof(WirelessKitInstance.IsConnected) when instance.IsConnected:
-                    if (_lastConnectedState != instance.IsConnected)
-                        _connectedAt = DateTime.Now;
+                    
+                case nameof(WirelessKitInstance.IsConnected) when instance.IsConnected && _lastConnectedState == false:
+                    _connectedAt = DateTime.Now;
                     break;
             }
 

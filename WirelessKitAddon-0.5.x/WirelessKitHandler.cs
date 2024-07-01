@@ -175,7 +175,7 @@ namespace WirelessKitAddon
             if (_daemon == null)
                 return;
 
-            _instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, false, 0, false, EarlyWarningSetting, LateWarningSetting);
+            _instance = new WirelessKitInstance(_tablet!.TabletProperties.Name, false, 0, false, EarlyWarningSetting, LateWarningSetting, NotificationTimeout);
 
             _daemon.Add(_instance);
         }
