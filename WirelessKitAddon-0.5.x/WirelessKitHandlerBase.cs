@@ -60,7 +60,8 @@ namespace WirelessKitAddon.Lib
          DefaultPropertyValue(5),
          Unit("seconds"),
          ToolTip("WirelessKitAddon: \n\n" +
-                 "The time before sending notifications when a tablet is connected.\n")]
+                 "The time before sending notifications when a tablet is connected.\n\n" +
+                 "A value below 0 means that notifications are disabled.")]
         public int NotificationTimeout { get; set; }
 
         #endregion

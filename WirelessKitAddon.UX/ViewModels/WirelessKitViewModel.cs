@@ -1,10 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -318,8 +315,9 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             if (CurrentInstance.IsCharging != _lastChargingState)
                 CurrentToolTip = BuildToolTip(CurrentInstance);
 
-            if (instance.IsConnected && !instance.IsCharging && 
-               (DateTime.Now - _connectedAt) > _beforeActive)
+            if (instance.TimeBeforeNotification >= 0 && // Only enable Notifications if timeout is above 0
+                instance.IsConnected && !instance.IsCharging && // Only enable if connected and not charging
+               (DateTime.Now - _connectedAt) > _beforeActive) // Only enable if timeout has passed
                 HandleWarnings();
 
             // Keep track of the last state, shouldn't be needed when nuking the daemon plugin & passing the instance directly
@@ -356,8 +354,9 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
                     break;
             }
 
-            if (instance.IsConnected && !instance.IsCharging &&
-               (DateTime.Now - _connectedAt) > _beforeActive)
+            if (instance.TimeBeforeNotification >= 0 && // Only enable Notifications if timeout is above 0
+                instance.IsConnected && !instance.IsCharging && // Only enable if connected and not charging
+               (DateTime.Now - _connectedAt) > _beforeActive) // Only enable if timeout has passed
                     HandleWarnings();
         }
     }
