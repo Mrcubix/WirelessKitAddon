@@ -99,7 +99,6 @@ namespace WirelessKitAddon.Lib
                 return false;
             }
 
-
             // Run the tray icon
             try
             {
