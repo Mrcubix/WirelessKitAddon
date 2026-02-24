@@ -34,7 +34,7 @@ namespace WirelessKitAddon
 
         // The PID of all supported tablets
         private readonly ImmutableArray<int> SUPPORTED_TABLETS = ImmutableArray.Create<int>(
-            209, 210, 211, 214, 215, 219, 222, 223, 770, 771, 828, 830
+            38, 209, 210, 211, 214, 215, 219, 222, 223, 770, 771, 828, 830
         );
 
         private readonly DeviceIdentifier wirelessKitIdentifier = new()
@@ -42,7 +42,7 @@ namespace WirelessKitAddon
             VendorID = WACOM_VID,
             ProductID = WIRELESS_KIT_PID,
             InputReportLength = WIRELESS_KIT_IDENTIFIER_INPUT_LENGTH,
-            OutputReportLength = 0,
+            OutputReportLength = null,
             ReportParser = typeof(WirelessReportParser).FullName ?? string.Empty,
             FeatureInitReport = new byte[2] { 0x02, 0x02 },
             OutputInitReport = null!,
@@ -55,6 +55,7 @@ namespace WirelessKitAddon
         #region Fields
 
         private readonly byte[] _powerSavingReport = new byte[13] { 0x03, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+        private bool _isWireless;
         private TabletState? _tablet;
         private IOutputMode? _outputMode;
         private DeviceReader<IDeviceReport>? _reader;
@@ -85,14 +86,29 @@ namespace WirelessKitAddon
             if (_driver == null || _tablet == null || _outputMode == null || _daemon == null)
                 return;
 
-            // Tablet needs to be handled differently depending on whether it's in wireless mode or not
-            if (_tablet.Digitizer.VendorID == WACOM_VID && _tablet.Digitizer.ProductID == WIRELESS_KIT_PID)
-                HandleWirelessKit((_driver as Driver)!);
-            // Any of the tablets identifiers PID matches the supported && vendorID is Wacom's vendorID
-            else if (_tablet.Digitizer.VendorID == WACOM_VID && SUPPORTED_TABLETS.Contains(_tablet.Digitizer.ProductID))
-                HandleWiredTablet((_driver as Driver)!);
+            // Try wired first: if the tablet's wired USB device is present, use it
+            HandleWiredTablet((_driver as Driver)!);
 
+            // If wired device wasn't found, the tablet must be communicating over the wireless dongle
             if (_reader == null)
+            {
+                HandleWirelessKit((_driver as Driver)!);
+            }
+
+            // If we still couldn't open the standard 32-byte battery endpoint (e.g. on macOS
+            // where the dongle only exposes 0-byte, 10-byte, and 64-byte interfaces),
+            // set up the daemon and tray icon anyway. Battery level will show as "unknown"
+            // since macOS does not expose the wireless status HID interface.
+            if (_reader == null && DeviceList.Local.GetHidDevices()
+                .Any(d => d.VendorID == WACOM_VID && d.ProductID == WIRELESS_KIT_PID))
+            {
+                _isWireless = true;
+                Log.Write("Wireless Kit Addon",
+                    "Using wireless passthrough mode — battery status is unavailable on this platform.",
+                    LogLevel.Info);
+            }
+
+            if (_reader == null && !_isWireless)
                 Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {_tablet.TabletProperties.Name}", LogLevel.Warning);
             else
             {
@@ -100,6 +116,11 @@ namespace WirelessKitAddon
 
                 if (_daemon != null && _instance != null)
                 {
+                    // In passthrough mode, battery data is not available — set to -1
+                    // which triggers the "battery_unknown" icon in the tray UI.
+                    if (_isWireless && _reader == null)
+                        _instance.BatteryLevel = -1;
+
                     WirelessKitDaemonBase.Ready -= OnDaemonReady;
                     _ = Task.Run(SetupTrayIcon);
 
@@ -110,22 +131,41 @@ namespace WirelessKitAddon
 
         protected override void HandleWirelessKit(Driver driver)
         {
-            var matches = GetMatchingDevices(driver, _tablet!.TabletProperties, wirelessKitIdentifier);
+            // Try the standard 32-byte battery endpoint (works on Linux/Windows)
+            var matches = GetMatchingDevices(driver, _tablet!.TabletProperties, wirelessKitIdentifier).ToList();
 
-            HandleMatch(matches);
+            if (matches.Count > 0)
+            {
+                _isWireless = true;
+                Log.Write("Wireless Kit Addon", "Using wireless mode (32-byte dongle endpoint).", LogLevel.Info);
+                HandleMatch(matches);
+            }
+
+            // On macOS, the 32-byte endpoint does not exist. The dongle only exposes:
+            //   - InputLen=0  (control, FeatureLen=259)
+            //   - InputLen=10 (pen data, shared with OTD's main reader)
+            //   - InputLen=64 (aux/express keys)
+            // None of these carry battery status reports (0xC0/0x80).
+            // Battery reading is not possible — we fall through to passthrough mode.
         }
 
         protected override void HandleWiredTablet(Driver driver)
         {
-            // We need to find the inputTree with an identifier of input length 10
-            var identifier = _tablet!.TabletProperties.DigitizerIdentifiers.FirstOrDefault(identifier => identifier.InputReportLength == 10 ||
-                                                                                                         identifier.InputReportLength == 11);
+            // We need to find a wired identifier (not the wireless dongle PID) with input length 10 or 11
+            var identifier = _tablet!.TabletProperties.DigitizerIdentifiers.FirstOrDefault(identifier =>
+                (identifier.InputReportLength == 10 || identifier.InputReportLength == 11) &&
+                identifier.ProductID != WIRELESS_KIT_PID);
 
             if (identifier == null)
                 return;
 
-            // we need to create a copy of the device and change the parser to our wireless parser
-            var matches = GetMatchingDevices(driver, _tablet.TabletProperties, identifier);
+            // Verify the wired device actually exists on the USB bus
+            var matches = GetMatchingDevices(driver, _tablet.TabletProperties, identifier).ToList();
+
+            if (matches.Count == 0)
+                return;
+
+            Log.Write("Wireless Kit Addon", "Using wired mode (USB).", LogLevel.Info);
 
             HandleMatch(matches);
         }
@@ -153,7 +193,8 @@ namespace WirelessKitAddon
                 }
             }
 
-            SetBatterySavingModeTimeout();
+            if (_isWireless)
+                SetBatterySavingModeTimeout();
 
             return _reader != null;
         }
