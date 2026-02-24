@@ -14,9 +14,7 @@ namespace WirelessKitAddon.Lib
 {
     public class TrayManager : IDisposable
     {
-        private readonly static Assembly _assembly = Assembly.GetExecutingAssembly();
-        private readonly static FileInfo _file = new(_assembly.Location);
-        private readonly DirectoryInfo? _directory = _file.Directory;
+        private readonly DirectoryInfo? _directory = GetAssemblyDirectory();
 
         private readonly TimeSpan _timeout = TimeSpan.FromMinutes(10);
 
@@ -65,6 +63,10 @@ namespace WirelessKitAddon.Lib
                 return false;
             }
 
+            // Ensure the binary is executable on Unix-based systems
+            if (!OperatingSystem.IsWindows())
+                SetExecutablePermission(_appPath);
+
             IsReady = true;
 
             return true;
@@ -78,20 +80,10 @@ namespace WirelessKitAddon.Lib
             string filename;
             string arguments;
 
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 filename = _appPath;
                 arguments = $"\"{tabletName}\"";
-            }
-            else if (OperatingSystem.IsLinux())
-            {
-                filename = _appPath;
-                arguments = $"\"{tabletName}\"";
-            }
-            else if (OperatingSystem.IsMacOS())
-            {
-                filename = "open";
-                arguments = $"-a \"{_appPath}\" --args \"{tabletName}\"";
             }
             else
             {
@@ -110,19 +102,30 @@ namespace WirelessKitAddon.Lib
                         Arguments = arguments,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
+                        RedirectStandardError = true,
                         CreateNoWindow = true
                     }
                 };
 
                 process.Start();
 
+                // Read streams asynchronously to avoid deadlock
+                string? stdout = null;
+                string? stderr = null;
+                var stdoutTask = Task.Run(() => stdout = process.StandardOutput.ReadToEnd());
+                var stderrTask = Task.Run(() => stderr = process.StandardError.ReadToEnd());
+
                 _ = Task.Run(() =>
                 {
-                    var res = process.WaitForExit(500);
+                    var res = process.WaitForExit(2000);
 
                     if (res) // Exited due to an error
-                        Log.Write("Wireless Kit Addon", "The tray icon has exited unexpectedly: \n" +
-                                                       $"{process.StandardOutput.ReadToEnd()}", LogLevel.Error);
+                    {
+                        stdoutTask.Wait(1000);
+                        stderrTask.Wait(1000);
+                        Log.Write("Wireless Kit Addon", $"The tray icon has exited unexpectedly:\n" +
+                                                       $"stdout: {stdout}\nstderr: {stderr}", LogLevel.Error);
+                    }
                     else
                         Log.Write("Wireless Kit Addon", "The tray icon has been started successfully.", LogLevel.Info);
                 });
@@ -179,10 +182,86 @@ namespace WirelessKitAddon.Lib
 
             archive.ExtractToDirectory(_directory.FullName, true);
 
+            // On Unix-based systems, set the executable permission on the extracted binary
+            if (!OperatingSystem.IsWindows())
+                SetExecutablePermission(_appPath);
+
             File.WriteAllText(_versionFilePath, version);
             File.WriteAllText(_dateFilePath, DateTime.Now.ToString(CultureInfo.InvariantCulture));
 
             return true;
+        }
+
+        private static DirectoryInfo? GetAssemblyDirectory()
+        {
+            // 1. Try Assembly.Location (works on Windows and Linux)
+            var assembly = Assembly.GetExecutingAssembly();
+            var location = assembly.Location;
+
+            if (!string.IsNullOrEmpty(location) && File.Exists(location))
+                return new FileInfo(location).Directory;
+
+            // 2. Search all loaded assemblies for one with a valid Location in the same plugin folder
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var name = asm.GetName().Name;
+                if (name == "WirelessKitAddon" || name == "WirelessKitAddon.Lib")
+                {
+                    var loc = asm.Location;
+                    if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
+                        return new FileInfo(loc).Directory;
+                }
+            }
+
+            // 3. macOS fallback: search the OTD plugin directory for our DLL
+            string? pluginsRoot = null;
+
+            if (OperatingSystem.IsMacOS())
+                pluginsRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Library", "Application Support", "OpenTabletDriver", "Plugins");
+            else if (OperatingSystem.IsLinux())
+            {
+                var xdgConfig = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+                var configBase = !string.IsNullOrEmpty(xdgConfig) ? xdgConfig
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+                pluginsRoot = Path.Combine(configBase, "OpenTabletDriver", "Plugins");
+            }
+
+            if (pluginsRoot != null && Directory.Exists(pluginsRoot))
+            {
+                foreach (var dir in Directory.GetDirectories(pluginsRoot))
+                {
+                    if (File.Exists(Path.Combine(dir, "WirelessKitAddon.Lib.dll")))
+                        return new DirectoryInfo(dir);
+                }
+            }
+
+            return null;
+        }
+
+        private static void SetExecutablePermission(string filePath)
+        {
+            try
+            {
+                var process = new Process()
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "chmod",
+                        Arguments = $"+x \"{filePath}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                process.WaitForExit(5000);
+            }
+            catch (Exception e)
+            {
+                Log.Write("Wireless Kit Addon", $"Failed to set executable permission: {e.Message}", LogLevel.Warning);
+            }
         }
 
         public void Dispose()
