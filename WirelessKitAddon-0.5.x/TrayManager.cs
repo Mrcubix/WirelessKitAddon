@@ -5,8 +5,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading.Tasks;
+using OpenTabletDriver.Desktop;
 using OpenTabletDriver.Plugin;
 using WirelessKitAddon.Extensions;
 
@@ -14,7 +14,7 @@ namespace WirelessKitAddon.Lib
 {
     public class TrayManager : IDisposable
     {
-        private readonly DirectoryInfo? _directory = GetAssemblyDirectory();
+        private readonly DirectoryInfo? _directory = GetPluginDirectory();
 
         private readonly TimeSpan _timeout = TimeSpan.FromMinutes(10);
 
@@ -66,6 +66,12 @@ namespace WirelessKitAddon.Lib
             // Ensure the binary is executable on Unix-based systems
             if (!OperatingSystem.IsWindows())
                 SetExecutablePermission(_appPath);
+
+            // On macOS (Apple Silicon), overwriting a Mach-O binary invalidates its
+            // adhoc code signature. macOS kills unsigned binaries with SIGKILL (exit 137).
+            // Re-sign with an adhoc signature so the OS allows execution.
+            if (OperatingSystem.IsMacOS())
+                AdhocSign(_appPath);
 
             IsReady = true;
 
@@ -192,49 +198,16 @@ namespace WirelessKitAddon.Lib
             return true;
         }
 
-        private static DirectoryInfo? GetAssemblyDirectory()
+        private static DirectoryInfo? GetPluginDirectory()
         {
-            // 1. Try Assembly.Location (works on Windows and Linux)
-            var assembly = Assembly.GetExecutingAssembly();
-            var location = assembly.Location;
+            var pluginsRoot = AppInfo.Current?.PluginDirectory;
+            if (pluginsRoot == null || !Directory.Exists(pluginsRoot))
+                return null;
 
-            if (!string.IsNullOrEmpty(location) && File.Exists(location))
-                return new FileInfo(location).Directory;
-
-            // 2. Search all loaded assemblies for one with a valid Location in the same plugin folder
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var dir in Directory.GetDirectories(pluginsRoot))
             {
-                var name = asm.GetName().Name;
-                if (name == "WirelessKitAddon" || name == "WirelessKitAddon.Lib")
-                {
-                    var loc = asm.Location;
-                    if (!string.IsNullOrEmpty(loc) && File.Exists(loc))
-                        return new FileInfo(loc).Directory;
-                }
-            }
-
-            // 3. macOS fallback: search the OTD plugin directory for our DLL
-            string? pluginsRoot = null;
-
-            if (OperatingSystem.IsMacOS())
-                pluginsRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    "Library", "Application Support", "OpenTabletDriver", "Plugins");
-            else if (OperatingSystem.IsLinux())
-            {
-                var xdgConfig = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-                var configBase = !string.IsNullOrEmpty(xdgConfig) ? xdgConfig
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
-                pluginsRoot = Path.Combine(configBase, "OpenTabletDriver", "Plugins");
-            }
-
-            if (pluginsRoot != null && Directory.Exists(pluginsRoot))
-            {
-                foreach (var dir in Directory.GetDirectories(pluginsRoot))
-                {
-                    if (File.Exists(Path.Combine(dir, "WirelessKitAddon.Lib.dll")))
-                        return new DirectoryInfo(dir);
-                }
+                if (File.Exists(Path.Combine(dir, "WirelessKitAddon.Lib.dll")))
+                    return new DirectoryInfo(dir);
             }
 
             return null;
@@ -261,6 +234,30 @@ namespace WirelessKitAddon.Lib
             catch (Exception e)
             {
                 Log.Write("Wireless Kit Addon", $"Failed to set executable permission: {e.Message}", LogLevel.Warning);
+            }
+        }
+
+        private static void AdhocSign(string filePath)
+        {
+            try
+            {
+                var process = new Process()
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "codesign",
+                        Arguments = $"--force --sign - \"{filePath}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                process.WaitForExit(5000);
+            }
+            catch (Exception e)
+            {
+                Log.Write("Wireless Kit Addon", $"Failed to adhoc sign binary: {e.Message}", LogLevel.Warning);
             }
         }
 
