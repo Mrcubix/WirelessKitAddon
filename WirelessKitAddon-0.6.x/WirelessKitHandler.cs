@@ -1,3 +1,4 @@
+using HidSharp;
 using OpenTabletDriver;
 using OpenTabletDriver.Plugin;
 using OpenTabletDriver.Plugin.Attributes;
@@ -53,6 +54,11 @@ namespace WirelessKitAddon
 
         private bool _isWireless;
 
+        private bool _pastEarlyWarning;
+        private bool _pastLateWarning;
+
+        private CancellationTokenSource? _presenceCts;
+
         private TabletReference? _tablet;
 
         private InputDevice? _device;
@@ -91,33 +97,50 @@ namespace WirelessKitAddon
 
                 // If we still couldn't open the standard 32-byte battery endpoint (e.g. on macOS
                 // where the dongle only exposes 0-byte, 10-byte, and 64-byte interfaces),
-                // set up the daemon and tray icon anyway. Battery level will show as "unknown"
+                // enter passthrough mode. Battery level will show as "unknown"
                 // since macOS does not expose the wireless status HID interface.
                 if (DeviceTree == null && _driver.CompositeDeviceHub.GetDevices()
                     .Any(d => d.VendorID == WACOM_VID && d.ProductID == WIRELESS_KIT_PID))
                 {
                     _isWireless = true;
                     Log.Write("Wireless Kit Addon",
-                        "Using wireless passthrough mode — battery status is unavailable on this platform.",
-                        LogLevel.Info);
+                        "Dongle detected — checking for tablet presence...", LogLevel.Info);
+
+                    if (IsTabletBehindDongle())
+                    {
+                        // Tablet is connected right now — proceed with full setup
+                        OnTabletDetected();
+                    }
+                    else
+                    {
+                        // Dongle present but no tablet powered on — poll in background
+                        Log.Write("Wireless Kit Addon",
+                            "Dongle present but no tablet connected. Monitoring...", LogLevel.Info);
+                        StartPresenceMonitor();
+                    }
                 }
 
                 if (DeviceTree == null && !_isWireless)
                     Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {tablet.Properties.Name}", LogLevel.Warning);
-                else
+                else if (DeviceTree != null)
                 {
+                    // Wired or wireless (non-passthrough) mode — standard initialization
                     BringToDaemon();
 
                     if (_daemon != null && _instance != null)
                     {
-                        // In passthrough mode, battery data is not available — set to -1
-                        // which triggers the "battery_unknown" icon in the tray UI.
-                        if (_isWireless && DeviceTree == null)
-                            _instance.BatteryLevel = -1;
-
                         _ = Task.Run(SetupTrayIcon);
 
-                        Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {_instance.Name}", LogLevel.Info);
+                        var mode = _isWireless ? "wireless dongle" : "USB";
+                        var name = _instance.Name;
+                        Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {name}", LogLevel.Info);
+
+                        var delay = Math.Max(NotificationTimeout, 1) * 1000;
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(delay);
+                            Log.WriteNotify("Wireless Kit Addon", $"{name} connected through {mode}.", LogLevel.Info);
+                        });
                     }
                 }
             }
@@ -247,6 +270,8 @@ namespace WirelessKitAddon
                 {
                     _instance.BatteryLevel = batteryReport.Battery;
                     _instance.IsCharging = batteryReport.IsCharging;
+
+                    CheckBatteryWarnings(batteryReport.Battery, batteryReport.IsCharging);
                 }
 
                 if (report is IWirelessKitReport wirelessReport)
@@ -258,6 +283,32 @@ namespace WirelessKitAddon
             }
 
             Emit?.Invoke(report);
+        }
+
+        private void CheckBatteryWarnings(float battery, bool isCharging)
+        {
+            if (isCharging)
+            {
+                // Reset warnings when charging so they fire again after unplug
+                _pastEarlyWarning = false;
+                _pastLateWarning = false;
+                return;
+            }
+
+            if (LateWarningSetting >= 0 && battery <= LateWarningSetting && !_pastLateWarning)
+            {
+                _pastLateWarning = true;
+                Log.WriteNotify("Wireless Kit Addon",
+                    $"{_instance!.Name}: Battery critically low ({battery}%)!",
+                    LogLevel.Warning);
+            }
+            else if (EarlyWarningSetting >= 0 && battery <= EarlyWarningSetting && !_pastEarlyWarning)
+            {
+                _pastEarlyWarning = true;
+                Log.WriteNotify("Wireless Kit Addon",
+                    $"{_instance!.Name}: Battery low ({battery}%).",
+                    LogLevel.Warning);
+            }
         }
 
         public override void BringToDaemon()
@@ -284,6 +335,90 @@ namespace WirelessKitAddon
             catch (Exception)
             {
                 Log.Write("Wireless Kit Addon", $"Failed to set the power saving mode timeout.", LogLevel.Error);
+            }
+        }
+
+        /// <summary>
+        ///   Check if a tablet is actually connected behind the wireless dongle by reading
+        ///   from the 64-byte aux/express key endpoint. The dongle streams reports on this
+        ///   endpoint only when a tablet is paired and powered on.
+        /// </summary>
+        private static bool IsTabletBehindDongle()
+        {
+            var auxDevice = DeviceList.Local
+                .GetHidDevices(WACOM_VID, WIRELESS_KIT_PID)
+                .FirstOrDefault(d => d.GetMaxInputReportLength() == 64);
+
+            if (auxDevice == null || !auxDevice.TryOpen(out var stream))
+                return false;
+
+            try
+            {
+                stream.ReadTimeout = 2000;
+                var buf = new byte[64];
+                stream.Read(buf, 0, buf.Length);
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                return false;
+            }
+            finally
+            {
+                stream.Dispose();
+            }
+        }
+
+        /// <summary>
+        ///   Start a background polling loop that checks for tablet presence every 3 seconds.
+        ///   When a tablet is detected, calls <see cref="OnTabletDetected"/>.
+        /// </summary>
+        private void StartPresenceMonitor()
+        {
+            _presenceCts = new CancellationTokenSource();
+            var token = _presenceCts.Token;
+
+            _ = Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await Task.Delay(3000, token);
+
+                    if (IsTabletBehindDongle())
+                    {
+                        OnTabletDetected();
+                        return;
+                    }
+                }
+            }, token);
+        }
+
+        /// <summary>
+        ///   Called when a tablet is detected behind the dongle (either immediately or
+        ///   after polling). Sets up the daemon, tray icon, and connection notification.
+        /// </summary>
+        private void OnTabletDetected()
+        {
+            Log.Write("Wireless Kit Addon",
+                "Tablet detected behind wireless dongle.", LogLevel.Info);
+
+            BringToDaemon();
+
+            if (_daemon != null && _instance != null)
+            {
+                _instance.BatteryLevel = -1;
+                _ = Task.Run(SetupTrayIcon);
+
+                var name = _instance.Name;
+                Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {name}", LogLevel.Info);
+
+                var delay = Math.Max(NotificationTimeout, 1) * 1000;
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(delay);
+                    Log.WriteNotify("Wireless Kit Addon",
+                        $"{name} connected through wireless dongle.", LogLevel.Info);
+                });
             }
         }
 
@@ -350,6 +485,10 @@ namespace WirelessKitAddon
 
         public override void Dispose()
         {
+            _presenceCts?.Cancel();
+            _presenceCts?.Dispose();
+            _presenceCts = null;
+
             if (_instance != null && _daemon != null)
                 StopHandling();
 
