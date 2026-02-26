@@ -210,13 +210,18 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
     private static string BuildToolTip(WirelessKitInstance instance)
     {
-        var battery = instance.BatteryLevel < 0
-            ? "Battery: Wireless Reading Unsupported"
-            : $"Battery: {instance.BatteryLevel}%";
+        string battery;
+
+        if (instance.BatteryLevel < 0)
+            battery = "Battery: Wireless Reading Unsupported";
+        else if (instance.IsCharging && instance.BatteryLevel >= 100)
+            battery = "Battery: Charging";
+        else
+            battery = $"Battery: {instance.BatteryLevel}%";
 
         var toolTip = $"Tablet: {instance.Name}\n{battery}";
 
-        if (instance.IsCharging)
+        if (instance.IsCharging && instance.BatteryLevel < 100)
             toolTip += "\nCharging...";
 
         return toolTip;
