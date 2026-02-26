@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Avalonia;
 using DesktopNotifications;
 using DesktopNotifications.Avalonia;
