@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../WirelessKitAddon.Lib/WirelessKitAddon.Lib.csproj" />
     <ProjectReference Include="../.modules/OpenTabletDriver-0.5.x/OpenTabletDriver/OpenTabletDriver.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../.modules/OpenTabletDriver-0.5.x/OpenTabletDriver.Desktop/OpenTabletDriver.Desktop.csproj" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
