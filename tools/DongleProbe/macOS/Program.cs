@@ -78,6 +78,63 @@ finally
     controlStream?.Dispose();
 }
 
+// === Try reading INPUT reports from the control endpoint ===
+// ioreg shows MaxInputReportSize=32 with Report ID 0x80, but HidSharp reports InputLen=0.
+// The HID descriptor marks Report ID 0x80 as Input (Constant) — 81 01 — which may cause
+// HidSharp to skip it when calculating MaxInputReportLength.
+// Let's try to read from the stream anyway with a 32-byte buffer.
+Console.WriteLine("\n=== Control Endpoint — INPUT report read attempt (32 bytes) ===\n");
+try
+{
+    if (controlDev.TryOpen(out var inputStream))
+    {
+        inputStream.ReadTimeout = 5000;
+        Console.WriteLine("Listening for input reports on control endpoint (5 seconds)...");
+        Console.WriteLine($"  (HidSharp MaxInputReportLength = {controlDev.GetMaxInputReportLength()})");
+
+        var startTime = DateTime.Now;
+        int inputCount = 0;
+        while ((DateTime.Now - startTime).TotalSeconds < 5 && inputCount < 10)
+        {
+            try
+            {
+                var buf = new byte[32];
+                var bytesRead = inputStream.Read(buf, 0, buf.Length);
+                Console.Write($"  Input #{inputCount} ({bytesRead}b): ");
+                for (int i = 0; i < bytesRead; i++)
+                    Console.Write($"{buf[i]:X2} ");
+                Console.WriteLine();
+
+                // Parse battery if this looks like Report ID 0x80
+                if (bytesRead >= 6 && buf[0] == 0x80)
+                {
+                    bool connected = (buf[1] & 0x01) != 0;
+                    float battery = (buf[5] & 0x3F) * 100f / 31f;
+                    bool charging = (buf[5] & 0x80) != 0;
+                    Console.WriteLine($"    → Connected={connected}, Battery={battery:F1}%, Charging={charging}");
+                }
+
+                inputCount++;
+            }
+            catch (TimeoutException) { break; }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  Read failed: {ex.Message}");
+                break;
+            }
+        }
+        if (inputCount == 0)
+            Console.WriteLine("  No input reports received on control endpoint.");
+        inputStream.Dispose();
+    }
+    else
+        Console.WriteLine("  Could not open control endpoint for input reads.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"  Error: {ex.Message}");
+}
+
 // === Probe the 10-byte input endpoint ===
 Console.WriteLine("\n=== 10-byte Input Endpoint ===\n");
 var inputDev = devices.FirstOrDefault(d => d.GetMaxInputReportLength() == 10);
