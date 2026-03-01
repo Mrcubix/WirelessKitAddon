@@ -14,6 +14,7 @@ using System;
 using OpenTabletDriver.Devices;
 using WirelessKitAddon.Lib;
 using WirelessKitAddon.Interfaces;
+using WirelessKitAddon.Native;
 
 #if OTD05
 
@@ -59,6 +60,7 @@ namespace WirelessKitAddon
         private TabletState? _tablet;
         private IOutputMode? _outputMode;
         private DeviceReader<IDeviceReport>? _reader;
+        private IOKitBatteryReader? _iokitReader;
 
         #endregion
 
@@ -96,19 +98,53 @@ namespace WirelessKitAddon
             }
 
             // If we still couldn't open the standard 32-byte battery endpoint (e.g. on macOS
-            // where the dongle only exposes 0-byte, 10-byte, and 64-byte interfaces),
-            // set up the daemon and tray icon anyway. Battery level will show as "unknown"
-            // since macOS does not expose the wireless status HID interface.
+            // where HidSharp reports InputLen=0 for the wireless monitor interface because the
+            // HID descriptor marks Report ID 0x80 as Input (Constant)), try the IOKit reader
+            // which bypasses HidSharp and reads battery reports directly via IOKit callbacks.
             if (_reader == null && DeviceList.Local.GetHidDevices()
                 .Any(d => d.VendorID == WACOM_VID && d.ProductID == WIRELESS_KIT_PID))
             {
                 _isWireless = true;
-                Log.Write("Wireless Kit Addon",
-                    "Using wireless passthrough mode — battery status is unavailable on this platform.",
-                    LogLevel.Info);
+
+                if (OperatingSystem.IsMacOS())
+                {
+                    try
+                    {
+                        _iokitReader = new IOKitBatteryReader();
+                        if (_iokitReader.Start())
+                        {
+                            _iokitReader.Report += HandleReport;
+                            _iokitReader.ReadingChanged += OnConnectionStateChanged;
+                            Log.Write("Wireless Kit Addon",
+                                "Using wireless mode (macOS IOKit battery reader).", LogLevel.Info);
+                        }
+                        else
+                        {
+                            _iokitReader.Dispose();
+                            _iokitReader = null;
+                            Log.Write("Wireless Kit Addon",
+                                "IOKit battery reader failed to start — battery status unavailable.",
+                                LogLevel.Warning);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _iokitReader?.Dispose();
+                        _iokitReader = null;
+                        Log.Write("Wireless Kit Addon",
+                            $"IOKit battery reader error: {ex.Message}", LogLevel.Warning);
+                    }
+                }
+
+                if (_iokitReader == null)
+                {
+                    Log.Write("Wireless Kit Addon",
+                        "Using wireless passthrough mode — battery status is unavailable on this platform.",
+                        LogLevel.Info);
+                }
             }
 
-            if (_reader == null && !_isWireless)
+            if (_reader == null && _iokitReader == null && !_isWireless)
                 Log.Write("Wireless Kit Addon", $"Failed to handle the Wireless Kit for {_tablet.TabletProperties.Name}", LogLevel.Warning);
             else
             {
@@ -116,9 +152,9 @@ namespace WirelessKitAddon
 
                 if (_daemon != null && _instance != null)
                 {
-                    // In passthrough mode, battery data is not available — set to -1
-                    // which triggers the "battery_unknown" icon in the tray UI.
-                    if (_isWireless && _reader == null)
+                    // In passthrough mode (no reader at all), battery data is not available
+                    // — set to -1 which triggers the "battery_unknown" icon in the tray UI.
+                    if (_isWireless && _reader == null && _iokitReader == null)
                         _instance.BatteryLevel = -1;
 
                     WirelessKitDaemonBase.Ready -= OnDaemonReady;
@@ -141,12 +177,10 @@ namespace WirelessKitAddon
                 HandleMatch(matches);
             }
 
-            // On macOS, the 32-byte endpoint does not exist. The dongle only exposes:
-            //   - InputLen=0  (control, FeatureLen=259)
-            //   - InputLen=10 (pen data, shared with OTD's main reader)
-            //   - InputLen=64 (aux/express keys)
-            // None of these carry battery status reports (0xC0/0x80).
-            // Battery reading is not possible — we fall through to passthrough mode.
+            // On macOS, HidSharp reports InputLen=0 for the wireless monitor interface
+            // because the HID descriptor marks Report ID 0x80 as Input (Constant).
+            // The IOKit battery reader (IOKitBatteryReader) handles this case in the
+            // passthrough path below by using IOKit callbacks directly.
         }
 
         protected override void HandleWiredTablet(Driver driver)
@@ -315,7 +349,7 @@ namespace WirelessKitAddon
                 _instance = null;
             }
 
-            // Dispose of the reader, 
+            // Dispose of the reader,
             // No need to dispose of the output mode as it's not owned by us
             if (_reader != null)
             {
@@ -323,6 +357,14 @@ namespace WirelessKitAddon
                 _reader.ReadingChanged -= OnConnectionStateChanged;
                 _reader.Dispose();
                 _reader = null;
+            }
+
+            if (_iokitReader != null)
+            {
+                _iokitReader.Report -= HandleReport;
+                _iokitReader.ReadingChanged -= OnConnectionStateChanged;
+                _iokitReader.Dispose();
+                _iokitReader = null;
             }
         }
 
@@ -336,6 +378,13 @@ namespace WirelessKitAddon
                 _reader.Report -= HandleReport;
                 _reader.Dispose();
                 _reader = null;
+            }
+
+            if (_iokitReader != null)
+            {
+                _iokitReader.Report -= HandleReport;
+                _iokitReader.Dispose();
+                _iokitReader = null;
             }
 
             WirelessKitDaemonBase.Ready -= OnDaemonReady;
