@@ -80,7 +80,8 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             "Assets/battery_33.ico",
             "Assets/battery_50.ico",
             "Assets/battery_75.ico",
-            "Assets/battery_100.ico"
+            "Assets/battery_100.ico",
+            "Assets/battery_charging.ico"
         );
 
         foreach (var icon in icons)
@@ -162,7 +163,7 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         if (CurrentInstance != null)
         {
             _beforeActive = TimeSpan.FromSeconds(CurrentInstance.TimeBeforeNotification);
-            CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel);
+            CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel, CurrentInstance.IsCharging);
             CurrentToolTip = BuildToolTip(CurrentInstance);
         }
 
@@ -214,21 +215,19 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
 
         if (instance.BatteryLevel < 0)
             battery = "Battery: Wireless Reading Unsupported";
-        else if (instance.IsCharging && instance.BatteryLevel >= 100)
+        else if (instance.IsCharging)
             battery = "Battery: Charging";
         else
             battery = $"Battery: {instance.BatteryLevel}%";
 
-        var toolTip = $"Tablet: {instance.Name}\n{battery}";
-
-        if (instance.IsCharging && instance.BatteryLevel < 100)
-            toolTip += "\nCharging...";
-
-        return toolTip;
+        return $"Tablet: {instance.Name}\n{battery}";
     }
 
-    public WindowIcon GetBatteryIcon(float batteryLevel)
+    public WindowIcon GetBatteryIcon(float batteryLevel, bool isCharging)
     {
+        if (isCharging)
+            return _icons[7];
+
         return batteryLevel switch
         {
             0 => _icons[1],
@@ -315,14 +314,11 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
                 _connectedAt = DateTime.Now;
 
             // will end up nuking the daemon plugin and use the instance itself instead if testing goes as intended
-            if (CurrentInstance.BatteryLevel != _lastBatteryLevel)
+            if (CurrentInstance.BatteryLevel != _lastBatteryLevel || CurrentInstance.IsCharging != _lastChargingState)
             {
-                CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel);
+                CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel, CurrentInstance.IsCharging);
                 CurrentToolTip = BuildToolTip(CurrentInstance);
             }
-            
-            if (CurrentInstance.IsCharging != _lastChargingState)
-                CurrentToolTip = BuildToolTip(CurrentInstance);
 
             if (instance.TimeBeforeNotification >= 0 && // Only enable Notifications if timeout is above 0
                 instance.IsConnected && !instance.IsCharging && // Only enable if connected and not charging
@@ -350,11 +346,8 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             switch (e.PropertyName)
             {
                 case nameof(WirelessKitInstance.BatteryLevel):
-                    CurrentIcon = GetBatteryIcon(instance.BatteryLevel);
-                    CurrentToolTip = BuildToolTip(instance);
-                    break;
-
                 case nameof(WirelessKitInstance.IsCharging):
+                    CurrentIcon = GetBatteryIcon(instance.BatteryLevel, instance.IsCharging);
                     CurrentToolTip = BuildToolTip(instance);
                     break;
                     
