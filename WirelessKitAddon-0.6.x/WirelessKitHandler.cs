@@ -10,6 +10,7 @@ using OpenTabletDriver.Plugin.Devices;
 using System.Collections.Immutable;
 using WirelessKitAddon.Lib;
 using WirelessKitAddon.Interfaces;
+using WirelessKitAddon.Native;
 
 #if OTD06
 
@@ -62,6 +63,7 @@ namespace WirelessKitAddon
         private TabletReference? _tablet;
 
         private InputDevice? _device;
+        private IOKitBatteryReader? _iokitReader;
 
         #endregion
 
@@ -96,27 +98,65 @@ namespace WirelessKitAddon
                 }
 
                 // If we still couldn't open the standard 32-byte battery endpoint (e.g. on macOS
-                // where the dongle only exposes 0-byte, 10-byte, and 64-byte interfaces),
-                // enter passthrough mode. Battery level will show as "unknown"
-                // since macOS does not expose the wireless status HID interface.
+                // where HidSharp reports InputLen=0 for the wireless monitor interface because the
+                // HID descriptor marks Report ID 0x80 as Input (Constant)), try the IOKit reader
+                // which bypasses HidSharp and reads battery reports directly via IOKit callbacks.
                 if (DeviceTree == null && _driver.CompositeDeviceHub.GetDevices()
                     .Any(d => d.VendorID == WACOM_VID && d.ProductID == WIRELESS_KIT_PID))
                 {
                     _isWireless = true;
-                    Log.Write("Wireless Kit Addon",
-                        "Dongle detected — checking for tablet presence...", LogLevel.Info);
 
-                    if (IsTabletBehindDongle())
+                    if (OperatingSystem.IsMacOS())
                     {
-                        // Tablet is connected right now — proceed with full setup
-                        OnTabletDetected();
+                        try
+                        {
+                            _iokitReader = new IOKitBatteryReader();
+                            if (_iokitReader.Start())
+                            {
+                                _iokitReader.Report += OnIOKitReport;
+                                _iokitReader.ReadingChanged += OnConnectionStateChanged;
+                                Log.Write("Wireless Kit Addon",
+                                    "Using wireless mode (macOS IOKit battery reader).", LogLevel.Info);
+                            }
+                            else
+                            {
+                                _iokitReader.Dispose();
+                                _iokitReader = null;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _iokitReader?.Dispose();
+                            _iokitReader = null;
+                            Log.Write("Wireless Kit Addon",
+                                $"IOKit battery reader error: {ex.Message}", LogLevel.Warning);
+                        }
+                    }
+
+                    if (_iokitReader != null)
+                    {
+                        // Don't call OnTabletDetected() yet — the dongle sends reports
+                        // even when the tablet is powered off (with IsConnected = false).
+                        // OnIOKitReport will call OnTabletDetected() when the first report
+                        // with IsConnected = true arrives.
+                        Log.Write("Wireless Kit Addon",
+                            "IOKit reader active — waiting for tablet connection...", LogLevel.Info);
                     }
                     else
                     {
-                        // Dongle present but no tablet powered on — poll in background
                         Log.Write("Wireless Kit Addon",
-                            "Dongle present but no tablet connected. Monitoring...", LogLevel.Info);
-                        StartPresenceMonitor();
+                            "Dongle detected — checking for tablet presence...", LogLevel.Info);
+
+                        if (IsTabletBehindDongle())
+                        {
+                            OnTabletDetected();
+                        }
+                        else
+                        {
+                            Log.Write("Wireless Kit Addon",
+                                "Dongle present but no tablet connected. Monitoring...", LogLevel.Info);
+                            StartPresenceMonitor();
+                        }
                     }
                 }
 
@@ -158,12 +198,10 @@ namespace WirelessKitAddon
                 HandleMatch(driver, matches);
             }
 
-            // On macOS, the 32-byte endpoint does not exist. The dongle only exposes:
-            //   - InputLen=0  (control, FeatureLen=259)
-            //   - InputLen=10 (pen data, shared with OTD's main reader)
-            //   - InputLen=64 (aux/express keys)
-            // None of these carry battery status reports (0xC0/0x80).
-            // Battery reading is not possible — we fall through to passthrough mode.
+            // On macOS, HidSharp reports InputLen=0 for the wireless monitor interface
+            // because the HID descriptor marks Report ID 0x80 as Input (Constant).
+            // The IOKit battery reader (IOKitBatteryReader) handles this case in the
+            // passthrough path below by using IOKit callbacks directly.
         }
 
         protected override void HandleWiredTablet(Driver driver)
@@ -406,10 +444,14 @@ namespace WirelessKitAddon
 
             if (_daemon != null && _instance != null)
             {
-                _instance.BatteryLevel = -1;
+                // Only set battery to unknown if no reader is active
+                if (_iokitReader == null)
+                    _instance.BatteryLevel = -1;
+
                 _ = Task.Run(SetupTrayIcon);
 
                 var name = _instance.Name;
+                var mode = _iokitReader != null ? "wireless dongle (IOKit)" : "wireless dongle";
                 Log.Write("Wireless Kit Addon", $"Now handling Wireless Kit Reports for {name}", LogLevel.Info);
 
                 var delay = Math.Max(NotificationTimeout, 1) * 1000;
@@ -417,9 +459,37 @@ namespace WirelessKitAddon
                 {
                     await Task.Delay(delay);
                     Log.WriteNotify("Wireless Kit Addon",
-                        $"{name} connected through wireless dongle.", LogLevel.Info);
+                        $"{name} connected through {mode}.", LogLevel.Info);
                 });
             }
+        }
+
+        /// <summary>
+        ///   Called when the tablet is powered off while the IOKit reader is active.
+        ///   Tears down the daemon instance, tray icon, and shows a disconnect notification,
+        ///   but keeps the IOKit reader alive so it can detect the tablet powering back on.
+        /// </summary>
+        private void OnTabletPoweredOff()
+        {
+            var name = _instance?.Name ?? "Tablet";
+
+            if (_instance != null && _daemon != null)
+            {
+                _daemon.Remove(_instance);
+                Log.Write("Wireless Kit Addon",
+                    $"Stopped handling Wireless Kit Reports for {name}", LogLevel.Info);
+                _instance = null;
+            }
+
+            _trayManager?.Dispose();
+            _trayManager = null;
+
+            // Reset battery warnings so they fire again on reconnect
+            _pastEarlyWarning = false;
+            _pastLateWarning = false;
+
+            Log.WriteNotify("Wireless Kit Addon",
+                $"{name} disconnected.", LogLevel.Info);
         }
 
         #endregion
@@ -438,6 +508,32 @@ namespace WirelessKitAddon
         {
             if (connected == false) // Pre-Dispose on disconnect
                 StopHandling();
+        }
+
+        /// <summary>
+        ///   Handles reports from the macOS IOKit battery reader.
+        ///   Detects tablet power-on/off transitions via IsConnected and starts or
+        ///   tears down the daemon, tray icon, and notification accordingly.
+        ///   The IOKit reader itself stays alive across power cycles so it can
+        ///   detect the tablet powering back on.
+        /// </summary>
+        private void OnIOKitReport(object? sender, IDeviceReport report)
+        {
+            if (report is IWirelessKitReport wirelessReport)
+            {
+                if (wirelessReport.IsConnected && _instance == null)
+                {
+                    // Tablet powered on (or first connected report)
+                    OnTabletDetected();
+                }
+                else if (!wirelessReport.IsConnected && _instance != null)
+                {
+                    // Tablet powered off — tear down services but keep IOKit reader alive
+                    OnTabletPoweredOff();
+                }
+            }
+
+            Consume(report);
         }
 
         #endregion
@@ -481,6 +577,14 @@ namespace WirelessKitAddon
 
                 DeviceTree = null;
             }
+
+            if (_iokitReader != null)
+            {
+                _iokitReader.Report -= OnIOKitReport;
+                _iokitReader.ReadingChanged -= OnConnectionStateChanged;
+                _iokitReader.Dispose();
+                _iokitReader = null;
+            }
         }
 
         public override void Dispose()
@@ -489,22 +593,16 @@ namespace WirelessKitAddon
             _presenceCts?.Dispose();
             _presenceCts = null;
 
-            if (_instance != null && _daemon != null)
-                StopHandling();
-
-            if (DeviceTree != null)
-            {
-                foreach (var device in DeviceTree.InputDevices)
-                    device.Dispose();
-
-                DeviceTree = null;
-            }
+            // StopHandling() already handles daemon removal, DeviceTree disposal,
+            // and IOKit reader cleanup with proper null guards.
+            StopHandling();
 
             WirelessKitDaemonBase.Ready -= OnDaemonReady;
             _instance = null;
             _daemon = null;
 
             _trayManager?.Dispose();
+            _trayManager = null;
 
             GC.SuppressFinalize(this);
         }
