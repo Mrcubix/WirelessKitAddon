@@ -3,7 +3,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DesktopNotifications;
@@ -44,6 +46,9 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
     private bool _lastConnectedState;
     private float _lastBatteryLevel;
     private bool _lastChargingState;
+
+    // Filtered battery level that only decreases when not charging, prevents tooltip flickering from sensor noise
+    private float _displayedBatteryLevel = -1;
 
     #endregion
 
@@ -163,8 +168,14 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         if (CurrentInstance != null)
         {
             _beforeActive = TimeSpan.FromSeconds(CurrentInstance.TimeBeforeNotification);
-            CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel, CurrentInstance.IsCharging);
-            CurrentToolTip = BuildToolTip(CurrentInstance);
+            _displayedBatteryLevel = CurrentInstance.BatteryLevel;
+            var instance = CurrentInstance;
+            Dispatcher.UIThread.Post(() =>
+            {
+                UpdateTrayIcon(
+                    GetBatteryIcon(instance.BatteryLevel, instance.IsCharging),
+                    BuildToolTip(instance));
+            });
         }
 
         _daemon.InstanceUpdated += OnInstanceChanged;
@@ -228,16 +239,25 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
         if (isCharging)
             return _icons[7];
 
+        // Ranges use midpoints between icon labels so each icon represents the closest match:
+        // battery_0 (0%), battery_10 (1-20%), battery_33 (21-40%), battery_50 (41-62%),
+        // battery_75 (63-87%), battery_100 (88-100%)
         return batteryLevel switch
         {
             0 => _icons[1],
-            > 0 and < 10 => _icons[2],
-            >= 10 and < 33 => _icons[3],
-            >= 33 and < 50 => _icons[4],
-            >= 50 and < 75 => _icons[5],
-            >= 75 => _icons[6],
+            > 0 and <= 20 => _icons[2],
+            > 20 and <= 40 => _icons[3],
+            > 40 and <= 62 => _icons[4],
+            > 62 and <= 87 => _icons[5],
+            > 87 => _icons[6],
             _ => _icons[0]
         };
+    }
+
+    private void UpdateTrayIcon(WindowIcon icon, string toolTip)
+    {
+        CurrentIcon = icon;
+        CurrentToolTip = toolTip;
     }
 
     [RelayCommand]
@@ -306,8 +326,16 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
     {
         if (instance != null && instance.Name == CurrentInstance?.Name)
         {   
-            CurrentInstance.BatteryLevel = (float)Math.Round(instance.BatteryLevel, 2);
+            var rawLevel = (float)Math.Round(instance.BatteryLevel, 2);
             CurrentInstance.IsCharging = instance.IsCharging;
+
+            // Filter sensor noise: battery only decreases when not charging
+            if (instance.IsCharging || _displayedBatteryLevel < 0)
+                _displayedBatteryLevel = rawLevel;
+            else
+                _displayedBatteryLevel = Math.Min(_displayedBatteryLevel, rawLevel);
+
+            CurrentInstance.BatteryLevel = _displayedBatteryLevel;
 
             // A timeout is needed to make sure that the battery level is updated when the tablet is connected
             if (_lastConnectedState == false && instance.IsConnected)
@@ -316,8 +344,15 @@ public partial class WirelessKitViewModel : ViewModelBase, IDisposable
             // will end up nuking the daemon plugin and use the instance itself instead if testing goes as intended
             if (CurrentInstance.BatteryLevel != _lastBatteryLevel || CurrentInstance.IsCharging != _lastChargingState)
             {
-                CurrentIcon = GetBatteryIcon(CurrentInstance.BatteryLevel, CurrentInstance.IsCharging);
-                CurrentToolTip = BuildToolTip(CurrentInstance);
+                var level = CurrentInstance.BatteryLevel;
+                var charging = CurrentInstance.IsCharging;
+                var current = CurrentInstance;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    UpdateTrayIcon(
+                        GetBatteryIcon(level, charging),
+                        BuildToolTip(current));
+                });
             }
 
             if (instance.TimeBeforeNotification >= 0 && // Only enable Notifications if timeout is above 0
