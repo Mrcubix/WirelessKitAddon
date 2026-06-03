@@ -6,7 +6,9 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading.Tasks;
+using OpenTabletDriver.Desktop.Reflection;
 using OpenTabletDriver.Plugin;
 using WirelessKitAddon.Extensions;
 
@@ -14,9 +16,10 @@ namespace WirelessKitAddon.Lib
 {
     public class TrayManager : IDisposable
     {
-        private readonly static Assembly _assembly = Assembly.GetExecutingAssembly();
-        private readonly static FileInfo _file = new(_assembly.Location);
-        private readonly DirectoryInfo? _directory = _file.Directory;
+        private static readonly Assembly _assembly = Assembly.GetExecutingAssembly();
+        private static readonly DesktopPluginContext? _context = AssemblyLoadContext.GetLoadContext(_assembly) as DesktopPluginContext;
+
+        private readonly static DirectoryInfo? _directory = _context?.Directory;
 
         private readonly TimeSpan _timeout = TimeSpan.FromMinutes(10);
 
